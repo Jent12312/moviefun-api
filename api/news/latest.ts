@@ -8,8 +8,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
-        // Парсим RSS-ленту новостей кино (например, film.ru)
-        const feed = await parser.parseURL('https://www.film.ru/news.rss');
+        const feed = await parser.parseURL('https://www.kinopoisk.ru/news.rss');
 
         const articles = feed.items.map(item => ({
             id: item.guid || item.link,
@@ -21,7 +20,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             imageUrl: item.enclosure?.url || "" 
         })).slice(0, 20); // Берем 20 последних новостей
 
-        // Кэшируем на 30 минут, чтобы не спамить Film.ru запросами
         res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=86400');
         
         return res.status(200).json({
