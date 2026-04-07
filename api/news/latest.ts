@@ -8,9 +8,6 @@ const RSS_FEEDS = [
     'https://www.kinopoisk.ru/news.rss',
     'https://kanobu.ru/rss/news.xml',
     'https://www.kinonews.ru/rss/',
-    'https://kg-portal.ru/rss/news_anime.rss',
-    'https://kg-portal.ru/rss/news_tv.rss',
-    'https://kg-portal.ru/rss/news.rss',
     'https://kg-portal.ru/rss/news_all.rss'
 ];
 
