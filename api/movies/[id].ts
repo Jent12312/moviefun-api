@@ -82,11 +82,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         vote_average: data.vote_average || 0,
         vote_count: data.vote_count || 0,
         popularity: data.popularity || 0,
+        internal_rating: 0,
+        internal_vote_count: 0,
         genres: (data.genres || []).map((g: any) => ({ id: g.id, name: g.name })),
         original_language: data.original_language,
         status: data.status,
         tagline: data.tagline,
         adult: data.adult,
+        imdb_id: data.imdb_id || '',
+        budget: data.budget || 0,
+        revenue: data.revenue || 0,
       },
     });
   } catch (error) {

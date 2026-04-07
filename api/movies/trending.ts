@@ -1,35 +1,30 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // Разрешаем CORS, чтобы мы могли обращаться к API откуда угодно (потом закрутим гайки)
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
 
     if (req.method !== 'GET') {
-        return res.status(405).json({ 
-            success: false, 
-            error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET is allowed' } 
+        return res.status(405).json({
+            success: false,
+            error: { code: 'METHOD_NOT_ALLOWED', message: 'Only GET is allowed' }
         });
     }
 
     try {
-        // Читаем параметры пагинации
         const page = req.query.page || '1';
-        
-        // Ключ будет лежать в переменных окружения Vercel, безопасно скрытый от всех
         const tmdbKey = process.env.TMDB_API_KEY;
 
         if (!tmdbKey) {
             throw new Error("TMDB API Key is missing on the server");
         }
 
-        // Запрос к оригинальному TMDB
-        const response = await fetch(`https://api.themoviedb.org/3/movie/popular?language=ru-RU&page=${page}`, {
+        const response = await fetch(`https://api.themoviedb.org/3/trending/movie/day?language=ru-RU&page=${page}`, {
             headers: {
                 'Authorization': `Bearer ${tmdbKey}`,
                 'Content-Type': 'application/json'
@@ -42,7 +37,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const data = await response.json();
 
-        // Возвращаем ответ строго в нашем архитектурном формате (Раздел 4.2)
         return res.status(200).json({
             success: true,
             data: data.results,

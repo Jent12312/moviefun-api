@@ -5,7 +5,6 @@ const parser = new Parser();
 
 // 💡 СЮДА ВЫ МОЖЕТЕ ДОБАВЛЯТЬ ЛЮБЫЕ СВОИ ССЫЛКИ
 const RSS_FEEDS = [
-    'https://www.kinopoisk.ru/news.rss',
     'https://kanobu.ru/rss/news.xml',
     'https://www.kinonews.ru/rss/',
     'https://kg-portal.ru/rss/news_all.rss'
