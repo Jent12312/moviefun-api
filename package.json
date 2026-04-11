@@ -16,6 +16,8 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
+    "@prisma/client": "^7.7.0",
+    "prisma": "^7.7.0",
     "rss-parser": "^3.13.0"
   }
 }
