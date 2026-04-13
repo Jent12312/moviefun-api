@@ -87,7 +87,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           air_date: ep.air_date || '',
           vote_average: ep.vote_average || 0,
           runtime: ep.runtime || 0,
-          overview: ep.overview,
         })),
       },
     });

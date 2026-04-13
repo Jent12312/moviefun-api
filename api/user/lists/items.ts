@@ -7,8 +7,8 @@ function base64UrlDecode(str: string): string {
     let output = str.replace(/-/g, '+').replace(/_/g, '/');
     switch (output.length % 4) {
         case 0: break;
-        case 2: output += '=='; break;
-        case 3: output += '='; break;
+        case 2: output += '==';
+        case 3: output += '=';
         default: throw new Error('Illegal base64url string!');
     }
     return Buffer.from(output, 'base64').toString('utf-8');
@@ -33,15 +33,16 @@ function getAuthUserId(req: VercelRequest): string | null {
     return payload ? payload.sub : null;
 }
 
-async function supabaseQuery(method: string, path: string, body?: any) {
+async function supabaseQuery(method: string, path: string, body?: object) {
     const url = `${SUPABASE_URL}/rest/v1${path}`;
     const headers: Record<string, string> = {
         'apikey': SUPABASE_SERVICE_KEY || '',
         'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
         'Content-Type': 'application/json',
-        'Prefer': method === 'POST' || method === 'PATCH' ? 'return=representation' : 'count=exact',
     };
-    if (method === 'POST' || method === 'PATCH') headers['Prefer'] += ', return=representation';
+    if (method === 'POST' || method === 'PATCH') {
+        headers['Prefer'] = 'return=representation';
+    }
 
     const opts: RequestInit = { method, headers };
     if (body) opts.body = JSON.stringify(body);
@@ -79,41 +80,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
+    const listId = req.query.list_id as string;
+    if (!listId) {
+        return res.status(400).json({
+            success: false,
+            error: { code: 'BAD_REQUEST', message: 'list_id is required' }
+        });
+    }
+
+    const listCheck = await supabaseQuery('GET',
+        `/user_lists?id=eq.${listId}&user_id=eq.${userId}&select=id`);
+    if (!Array.isArray(listCheck) || listCheck.length === 0) {
+        return res.status(403).json({
+            success: false,
+            error: { code: 'FORBIDDEN', message: 'List not found or access denied' }
+        });
+    }
+
     try {
         if (req.method === 'GET') {
-            const { status, limit, offset } = req.query;
-            const limitNum = Math.min(parseInt(limit as string) || 20, 50);
-            const offsetNum = parseInt(offset as string) || 0;
-
-            let filter = `user_id=eq.${userId}`;
-            if (status && status !== 'all') {
-                filter += `&status=eq.${status}`;
-            }
-
-            const data = await supabaseQuery('GET', 
-                `/user_movie_interactions?${filter}&select=*,movies(tmdb_id,title,overview,poster_path,vote_average,release_date)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
+            const data = await supabaseQuery('GET',
+                `/user_list_items?list_id=eq.${listId}&select=*,movies(tmdb_id,title,poster_path)`);
 
             const items = Array.isArray(data) ? data.map((item: any) => ({
-                tmdb_id: item.movies?.tmdb_id || item.movie_id,
-                title: item.movies?.title || '',
-                overview: item.movies?.overview || '',
-                poster_path: item.movies?.poster_path || '',
-                vote_average: item.movies?.vote_average || 0,
-                release_date: item.movies?.release_date || '',
-                status: item.status,
-                rating: item.rating,
-                updated_at: item.updated_at
+                id: item.id,
+                movie_id: item.movie_id,
+                tmdb_id: item.movies?.tmdb_id,
+                title: item.movies?.title,
+                poster_path: item.movies?.poster_path,
+                added_at: item.added_at
             })) : [];
 
-            return res.status(200).json({
-                success: true,
-                data: items,
-                meta: { limit: limitNum, offset: offsetNum }
-            });
+            return res.status(200).json({ success: true, data: items });
         }
 
         if (req.method === 'POST') {
-            const { movie_id, status, rating } = req.body;
+            const { movie_id, tmdb_id } = req.body;
+            
+            if (!movie_id && !tmdb_id) {
+                return res.status(400).json({
+                    success: false,
+                    error: { code: 'BAD_REQUEST', message: 'movie_id or tmdb_id is required' }
+                });
+            }
+
+            let movieUuid = movie_id;
+            if (!movieUuid && tmdb_id) {
+                const movieData = await supabaseQuery('GET',
+                    `/movies?tmdb_id=eq.${tmdb_id}&select=id`);
+                if (!Array.isArray(movieData) || movieData.length === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        error: { code: 'NOT_FOUND', message: 'Movie not found in catalog' }
+                    });
+                }
+                movieUuid = movieData[0].id;
+            }
+
+            const result = await supabaseQuery('POST', '/user_list_items', {
+                list_id: listId,
+                movie_id: movieUuid,
+                added_at: new Date().toISOString()
+            });
+
+            return res.status(201).json({ success: true, data: result });
+        }
+
+        if (req.method === 'DELETE') {
+            const { movie_id } = req.query;
             if (!movie_id) {
                 return res.status(400).json({
                     success: false,
@@ -121,53 +155,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 });
             }
 
-            const existing = await supabaseQuery('GET', 
-                `/user_movie_interactions?user_id=eq.${userId}&movie_id=eq.${movie_id}&select=id`);
-
-            let result;
-            if (Array.isArray(existing) && existing.length > 0) {
-                const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
-                if (status) updateData.status = status;
-                if (rating !== undefined) updateData.rating = rating;
-
-                result = await supabaseQuery('PATCH', 
-                    `/user_movie_interactions?id=eq.${existing[0].id}`, updateData);
-            } else {
-                result = await supabaseQuery('POST', '/user_movie_interactions', {
-                    user_id: userId,
-                    movie_id: movie_id,
-                    status: status || 'none',
-                    rating: rating || null,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                });
-            }
-
-            return res.status(201).json({ success: true, data: result });
-        }
-
-        if (req.method === 'DELETE') {
-            const { tmdb_id } = req.query;
-            if (!tmdb_id) {
-                return res.status(400).json({
-                    success: false,
-                    error: { code: 'BAD_REQUEST', message: 'tmdb_id is required' }
-                });
-            }
-
-            const movieData = await supabaseQuery('GET', 
-                `/movies?tmdb_id=eq.${tmdb_id}&select=id`);
-            
-            if (!Array.isArray(movieData) || movieData.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: { code: 'NOT_FOUND', message: 'Movie not found' }
-                });
-            }
-
-            const movieUuid = movieData[0].id;
-            await supabaseQuery('DELETE', 
-                `?user_id=eq.${userId}&movie_id=eq.${movieUuid}`);
+            await supabaseQuery('DELETE',
+                `?list_id=eq.${listId}&movie_id=eq.${movie_id}`);
 
             return res.status(200).json({ success: true });
         }

@@ -7,8 +7,8 @@ function base64UrlDecode(str: string): string {
     let output = str.replace(/-/g, '+').replace(/_/g, '/');
     switch (output.length % 4) {
         case 0: break;
-        case 2: output += '=='; break;
-        case 3: output += '='; break;
+        case 2: output += '==';
+        case 3: output += '=';
         default: throw new Error('Illegal base64url string!');
     }
     return Buffer.from(output, 'base64').toString('utf-8');
@@ -33,15 +33,21 @@ function getAuthUserId(req: VercelRequest): string | null {
     return payload ? payload.sub : null;
 }
 
-async function supabaseQuery(method: string, path: string) {
+async function supabaseQuery(method: string, path: string, body?: object) {
     const url = `${SUPABASE_URL}/rest/v1${path}`;
     const headers: Record<string, string> = {
         'apikey': SUPABASE_SERVICE_KEY || '',
         'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
         'Content-Type': 'application/json',
     };
+    if (method === 'POST' || method === 'PATCH') {
+        headers['Prefer'] = 'return=representation';
+    }
 
-    const res = await fetch(url, { method, headers });
+    const opts: RequestInit = { method, headers };
+    if (body) opts.body = JSON.stringify(body);
+
+    const res = await fetch(url, opts);
     if (!res.ok) {
         const err = await res.text();
         throw new Error(`Supabase error ${res.status}: ${err}`);
@@ -52,7 +58,7 @@ async function supabaseQuery(method: string, path: string) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
@@ -74,44 +80,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
     }
 
+    const reviewId = req.query.review_id as string || req.query.id as string;
+    if (!reviewId) {
+        return res.status(400).json({
+            success: false,
+            error: { code: 'BAD_REQUEST', message: 'review_id is required' }
+        });
+    }
+
     try {
-        const watchedData = await supabaseQuery('GET', 
-            `/user_movie_interactions?user_id=eq.${userId}&status=eq.watched&select=id,rating`);
-
-        const watchingData = await supabaseQuery('GET', 
-            `/user_movie_interactions?user_id=eq.${userId}&status=eq.watching&select=id`);
-            
-        const wantToWatchData = await supabaseQuery('GET', 
-            `/user_movie_interactions?user_id=eq.${userId}&status=eq.want_to_watch&select=id`);
-
-        const watched = Array.isArray(watchedData) ? watchedData : [];
-        const watching = Array.isArray(watchingData) ? watchingData : [];
-        const wantToWatch = Array.isArray(wantToWatchData) ? wantToWatchData : [];
-
-        const watchedCount = watched.length;
-        const watchingCount = watching.length;
-        const wantToWatchCount = wantToWatch.length;
-
-        let totalRating = 0;
-        let ratedCount = 0;
-        for (const item of watched) {
-            if (item.rating !== null && item.rating !== undefined) {
-                totalRating += item.rating;
-                ratedCount++;
-            }
+        const reviewCheck = await supabaseQuery('GET',
+            `/user_reviews?id=eq.${reviewId}&select=id,user_id,likes_count`);
+        
+        if (!Array.isArray(reviewCheck) || reviewCheck.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: { code: 'NOT_FOUND', message: 'Review not found' }
+            });
         }
 
-        const averageRating = ratedCount > 0 ? totalRating / ratedCount : 0;
+        const review = reviewCheck[0];
+        
+        if (review.user_id === userId) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'BAD_REQUEST', message: 'Cannot like your own review' }
+            });
+        }
 
-        return res.status(200).json({
-            success: true,
-            data: {
-                watched_count: watchedCount,
-                watching_count: watchingCount,
-                want_to_watch_count: wantToWatchCount,
-                average_rating: Math.round(averageRating * 10) / 10,
-                total_movies: watchedCount + watchingCount + wantToWatchCount
-            }
+        if (req.method === 'POST') {
+            const newCount = (review.likes_count || 0) + 1;
+            await supabaseQuery('PATCH',
+                `/user_reviews?id=eq.${reviewId}`,
+                { likes_count: newCount });
+
+            return res.status(200).json({ success: true, likes_count: newCount });
+        }
+
+        if (req.method === 'DELETE') {
+            const newCount = Math.max(0, (review.likes_count || 0) - 1);
+            await supabaseQuery('PATCH',
+                `/user_reviews?id=eq.${reviewId}`,
+                { likes_count: newCount });
+
+            return res.status(200).json({ success: true, likes_count: newCount });
+        }
+
+        return res.status(405).json({
+            success: false,
+            error: { code: 'METHOD_NOT_ALLOWED', message: 'Only POST, DELETE allowed' }
         });
 
     } catch (error: any) {
