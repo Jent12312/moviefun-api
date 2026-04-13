@@ -77,6 +77,8 @@ export interface TMDBCredits {
     character: string;
     profile_path: string | null;
     order: number;
+    known_for_department?: string;
+    gender?: number;
   }>;
   crew?: Array<{
     id: number;
@@ -84,6 +86,8 @@ export interface TMDBCredits {
     job: string;
     department: string;
     profile_path: string | null;
+    known_for_department?: string;
+    gender?: number;
   }>;
 }
 

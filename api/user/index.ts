@@ -42,7 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const { section, action, id } = req.query;
+  const section = Array.isArray(req.query.section) ? req.query.section[0] : req.query.section;
+  const action = Array.isArray(req.query.action) ? req.query.action[0] : req.query.action;
+  const id = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
 
   try {
     // ===== PROFILE =====
