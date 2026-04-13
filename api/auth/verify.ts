@@ -39,7 +39,7 @@ function verifyJWT(token: string): JWTPayload | null {
     }
 }
 
-async function getUserFromSupabase(userId: string): Promise<any> {
+async function getUserFromSupabase(userId: string): Promise<Record<string, unknown> | null> {
     const url = `${SUPABASE_URL}/rest/v1/users?select=*&id=eq.${userId}`;
     const res = await fetch(url, {
         headers: {
@@ -50,7 +50,7 @@ async function getUserFromSupabase(userId: string): Promise<any> {
     });
 
     if (!res.ok) return null;
-    const users = await res.json();
+    const users = await res.json() as Record<string, unknown>[];
     return users.length > 0 ? users[0] : null;
 }
 
