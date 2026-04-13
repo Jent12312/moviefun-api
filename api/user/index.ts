@@ -1,23 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { 
-  getAuthUserId, 
-  supabaseQuery, 
+import {
+  getAuthUserId,
+  supabaseQuery,
   checkSupabaseConfig,
   verifyJWT
 } from '../utils/user';
-
-const ACHIEVEMENTS_DEFINITIONS = [
-  { code: 'first_step', title: 'Первый шаг', description: 'Посмотреть первый фильм', icon: '🎬', category: 'watching', points: 10 },
-  { code: 'marathon', title: 'Марафонец', description: 'Посмотреть 10 фильмов за неделю', icon: '🏃', category: 'watching', points: 50 },
-  { code: 'cinephile', title: 'Киноман', description: 'Посмотреть 100 фильмов', icon: '🎥', category: 'watching', points: 100 },
-  { code: 'critic', title: 'Критик', description: 'Оценить 50 фильмов', icon: '⭐', category: 'watching', points: 75 },
-  { code: 'first_friend', title: 'Первый друг', description: 'Добавить друга', icon: '🤝', category: 'social', points: 10 },
-  { code: 'influencer', title: 'Влиятелен', description: 'Получить 50 лайков', icon: '💫', category: 'social', points: 100 },
-  { code: 'cosmopolitan', title: 'Космополит', description: 'Фильмы из 10 стран', icon: '🌍', category: 'exploration', points: 75 },
-  { code: 'time_traveler', title: 'Путешественник', description: 'Фильмы каждого десятилетия', icon: '⏰', category: 'exploration', points: 100 },
-  { code: 'curator', title: 'Куратор', description: 'Создать подборку 20+', icon: '📚', category: 'collector', points: 50 },
-  { code: 'archivist', title: 'Архивист', description: 'Заполнить профиль', icon: '📋', category: 'collector', points: 25 },
-];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -413,17 +400,28 @@ async function handleReviews(req: VercelRequest, res: VercelResponse, userId: st
     const existing = await supabaseQuery('GET',
       `/review_likes?user_id=eq.${userId}&review_id=eq.${id}&select=id`);
 
+    // Сначала получаем актуальное количество лайков
+    const likesResult = await supabaseQuery('GET',
+      `/review_likes?review_id=eq.${id}&select=id`);
+    const likesCount = Array.isArray(likesResult) ? likesResult.length : 0;
+
     if (Array.isArray(existing) && existing.length > 0) {
+      // Убираем лайк
       await supabaseQuery('DELETE', `/review_likes?user_id=eq.${userId}&review_id=eq.${id}`);
-      await supabaseQuery('PATCH', `/reviews?id=eq.${id}`, { likes_count: supabaseQuery('GET', `/review_likes?review_id=eq.${id}&select=id`).then(r => Array.isArray(r) ? r.length : 0) });
+      // Обновляем счётчик (уже уменьшился на 1 после удаления)
+      const updatedLikes = Math.max(0, likesCount - 1);
+      await supabaseQuery('PATCH', `/reviews?id=eq.${id}`, { likes_count: updatedLikes });
       return res.status(200).json({ success: true, liked: false });
     } else {
+      // Ставим лайк
       await supabaseQuery('POST', '/review_likes', {
         user_id: userId,
         review_id: id,
         created_at: new Date().toISOString()
       });
-      await supabaseQuery('PATCH', `/reviews?id=eq.${id}`, { likes_count: supabaseQuery('GET', `/review_likes?review_id=eq.${id}&select=id`).then(r => Array.isArray(r) ? r.length : 0) });
+      // Обновляем счётчик (уже увеличился на 1 после добавления)
+      const updatedLikes = likesCount + 1;
+      await supabaseQuery('PATCH', `/reviews?id=eq.${id}`, { likes_count: updatedLikes });
       return res.status(200).json({ success: true, liked: true });
     }
   }
@@ -448,6 +446,19 @@ async function handleReviews(req: VercelRequest, res: VercelResponse, userId: st
 }
 
 // ===== ACHIEVEMENTS HANDLER =====
+const ACHIEVEMENTS_DEFINITIONS = [
+  { code: 'first_step', title: 'Первый шаг', description: 'Посмотреть первый фильм', icon: '🎬', category: 0, points: 10 },
+  { code: 'marathon', title: 'Марафонец', description: 'Посмотреть 10 фильмов за неделю', icon: '🏃', category: 0, points: 50 },
+  { code: 'cinephile', title: 'Киноман', description: 'Посмотреть 100 фильмов', icon: '🎥', category: 0, points: 100 },
+  { code: 'critic', title: 'Критик', description: 'Оценить 50 фильмов', icon: '⭐', category: 0, points: 75 },
+  { code: 'first_friend', title: 'Первый друг', description: 'Добавить друга', icon: '🤝', category: 1, points: 10 },
+  { code: 'influencer', title: 'Влиятелен', description: 'Получить 50 лайков', icon: '💫', category: 1, points: 100 },
+  { code: 'cosmopolitan', title: 'Космополит', description: 'Фильмы из 10 стран', icon: '🌍', category: 2, points: 75 },
+  { code: 'time_traveler', title: 'Путешественник', description: 'Фильмы каждого десятилетия', icon: '⏰', category: 2, points: 100 },
+  { code: 'curator', title: 'Куратор', description: 'Создать подборку 20+', icon: '📚', category: 3, points: 50 },
+  { code: 'archivist', title: 'Архивист', description: 'Заполнить профиль', icon: '📋', category: 3, points: 25 },
+];
+
 async function handleAchievements(req: VercelRequest, res: VercelResponse, userId: string, action?: string) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 
@@ -462,8 +473,8 @@ async function handleAchievements(req: VercelRequest, res: VercelResponse, userI
     const achievements = ACHIEVEMENTS_DEFINITIONS.map(def => ({
       ...def,
       isEarned: earnedCodes.has(def.code),
-      earnedAt: '',
-      progress: 0
+      earnedAt: earnedCodes.has(def.code) ? new Date().toISOString() : '',
+      progress: earnedCodes.has(def.code) ? 100 : 0
     }));
 
     let totalPoints = 0;
