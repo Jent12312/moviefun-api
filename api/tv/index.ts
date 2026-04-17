@@ -185,6 +185,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           tagline: show.tagline,
           in_production: show.in_production || false,
           networks: (show.networks || []).map((n) => ({ id: n.id, name: n.name })),
+          created_by: (show.created_by || []).map((c) => ({ id: c.id, name: c.name })),
+          episode_run_time_avg: show.episode_run_time && show.episode_run_time.length > 0 
+            ? show.episode_run_time.reduce((a, b) => a + b, 0) / show.episode_run_time.length 
+            : 0,
+          languages: show.languages || [],
+          production_countries: (show.production_countries || []).map((c) => ({ name: c.name, iso_3166_1: c.iso_3166_1 })),
         },
       });
     } else {
