@@ -82,6 +82,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+// ===== HELPER: get or create movie =====
+async function getOrCreateMovie(tmdbId: number, title?: string, overview?: string, posterPath?: string): Promise<string | null> {
+  const existing = await supabaseQuery('GET', `/movies?tmdb_id=eq.${tmdbId}&select=id`);
+  if (Array.isArray(existing) && existing.length > 0) {
+    return existing[0].id;
+  }
+
+  const newMovie = await supabaseQuery('POST', '/movies', {
+    tmdb_id: tmdbId,
+    title: title || `Movie ${tmdbId}`,
+    overview: overview || '',
+    poster_path: posterPath || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+
+  if (Array.isArray(newMovie) && newMovie.length > 0) {
+    return newMovie[0].id;
+  }
+  if (newMovie && (newMovie as any).id) {
+    return (newMovie as any).id;
+  }
+
+  const afterInsert = await supabaseQuery('GET', `/movies?tmdb_id=eq.${tmdbId}&select=id`);
+  if (Array.isArray(afterInsert) && afterInsert.length > 0) {
+    return afterInsert[0].id;
+  }
+  return null;
+}
+
 // ===== PROFILE HANDLER =====
 async function handleProfile(req: VercelRequest, res: VercelResponse, userId: string) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
@@ -172,17 +202,16 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
     }
 
     const data = await supabaseQuery('GET',
-      `/user_movie_interactions?${filter}&select=*,movies(tmdb_id,title,overview,poster_path,vote_average,release_date)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
+      `/user_movie_interactions?${filter}&select=*,movies(tmdb_id,title,overview,poster_path)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
 
     const items = Array.isArray(data) ? data.map((item: any) => ({
       tmdb_id: item.movies?.tmdb_id || item.movie_id,
       title: item.movies?.title || '',
       overview: item.movies?.overview || '',
       poster_path: item.movies?.poster_path || '',
-      vote_average: item.movies?.vote_average || 0,
-      release_date: item.movies?.release_date || '',
       status: item.status,
       rating: item.rating,
+      is_favorite: item.is_favorite,
       updated_at: item.updated_at
     })) : [];
 
@@ -194,16 +223,24 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
   }
 
   if (req.method === 'POST') {
-    const { movie_id, status, rating } = req.body;
-    if (!movie_id) {
+    const { movie_id: tmdbId, status, rating, title, overview, poster_path } = req.body;
+    if (!tmdbId) {
       return res.status(400).json({
         success: false,
         error: { code: 'BAD_REQUEST', message: 'movie_id is required' }
       });
     }
 
+    let movieUuid = await getOrCreateMovie(tmdbId, title, overview, poster_path);
+    if (!movieUuid) {
+      return res.status(500).json({
+        success: false,
+        error: { code: 'DB_ERROR', message: 'Failed to get or create movie' }
+      });
+    }
+
     const existing = await supabaseQuery('GET',
-      `/user_movie_interactions?user_id=eq.${userId}&movie_id=eq.${movie_id}&select=id`);
+      `/user_movie_interactions?user_id=eq.${userId}&movie_id=eq.${movieUuid}&select=id`);
 
     let result;
     if (Array.isArray(existing) && existing.length > 0) {
@@ -216,7 +253,7 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
     } else {
       result = await supabaseQuery('POST', '/user_movie_interactions', {
         user_id: userId,
-        movie_id: movie_id,
+        movie_id: movieUuid,
         status: status || 'none',
         rating: rating || null,
         created_at: new Date().toISOString(),
@@ -248,7 +285,7 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
 
     const movieUuid = movieData[0].id;
     await supabaseQuery('DELETE',
-      `?user_id=eq.${userId}&movie_id=eq.${movieUuid}`);
+      `/user_movie_interactions?user_id=eq.${userId}&movie_id=eq.${movieUuid}`);
 
     return res.status(200).json({ success: true });
   }
