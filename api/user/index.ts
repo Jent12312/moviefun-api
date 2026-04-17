@@ -112,6 +112,75 @@ async function getOrCreateMovie(tmdbId: number, title?: string, overview?: strin
   return null;
 }
 
+async function getOrCreateSeries(tmdbId: number, name?: string, overview?: string, posterPath?: string): Promise<string | null> {
+  const existing = await supabaseQuery('GET', `/tv_series?tmdb_id=eq.${tmdbId}&select=id`);
+  if (Array.isArray(existing) && existing.length > 0) {
+    return existing[0].id;
+  }
+
+  const newSeries = await supabaseQuery('POST', '/tv_series', {
+    tmdb_id: tmdbId,
+    name: name || `Series ${tmdbId}`,
+    overview: overview || '',
+    poster_path: posterPath || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+
+  if (Array.isArray(newSeries) && newSeries.length > 0) {
+    return newSeries[0].id;
+  }
+  if (newSeries && (newSeries as any).id) {
+    return (newSeries as any).id;
+  }
+
+  const afterInsert = await supabaseQuery('GET', `/tv_series?tmdb_id=eq.${tmdbId}&select=id`);
+  if (Array.isArray(afterInsert) && afterInsert.length > 0) {
+    return afterInsert[0].id;
+  }
+  return null;
+}
+
+async function handleSeriesInteraction(req: VercelRequest, res: VercelResponse, userId: string, seriesTmbId: number,
+  status?: string, rating?: number, name?: string, posterPath?: string,
+  seasonNumber?: number, episodeNumber?: number) {
+  let seriesUuid = await getOrCreateSeries(seriesTmbId, name, undefined, posterPath);
+  if (!seriesUuid) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'DB_ERROR', message: 'Failed to get or create series' }
+    });
+  }
+
+  const existing = await supabaseQuery('GET',
+    `/user_tv_interactions?user_id=eq.${userId}&series_id=eq.${seriesUuid}&select=id`);
+
+  let result;
+  if (Array.isArray(existing) && existing.length > 0) {
+    const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (status) updateData.status = status;
+    if (rating !== undefined) updateData.rating = rating;
+    if (seasonNumber) updateData.current_season = seasonNumber;
+    if (episodeNumber) updateData.current_episode = episodeNumber;
+
+    result = await supabaseQuery('PATCH',
+      `/user_tv_interactions?id=eq.${existing[0].id}`, updateData);
+  } else {
+    result = await supabaseQuery('POST', '/user_tv_interactions', {
+      user_id: userId,
+      series_id: seriesUuid,
+      status: status || 'none',
+      rating: rating || null,
+      current_season: seasonNumber || 1,
+      current_episode: episodeNumber || 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  return res.status(201).json({ success: true, data: result });
+}
+
 // ===== PROFILE HANDLER =====
 async function handleProfile(req: VercelRequest, res: VercelResponse, userId: string) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
@@ -192,7 +261,26 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
 
   if (req.method === 'GET') {
-    const { status, limit, offset } = req.query;
+    const { status, limit, offset, movie_id } = req.query;
+
+    if (movie_id) {
+      const movieData = await supabaseQuery('GET', `/movies?tmdb_id=eq.${movie_id}&select=id`);
+      if (!Array.isArray(movieData) || movieData.length === 0) {
+        return res.status(200).json({ success: true, data: [] });
+      }
+      const movieUuid = movieData[0].id;
+      const interaction = await supabaseQuery('GET',
+        `/user_movie_interactions?user_id=eq.${userId}&movie_id=eq.${movieUuid}&select=*,movies(tmdb_id,title)&limit=1`);
+      const items = Array.isArray(interaction) && interaction.length > 0 ? [{
+        tmdb_id: interaction[0].movies?.tmdb_id,
+        title: interaction[0].movies?.title,
+        status: interaction[0].status,
+        rating: interaction[0].rating,
+        is_favorite: interaction[0].is_favorite
+      }] : [];
+      return res.status(200).json({ success: true, data: items });
+    }
+
     const limitNum = Math.min(parseInt(limit as string) || 20, 50);
     const offsetNum = parseInt(offset as string) || 0;
 
@@ -202,13 +290,15 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
     }
 
     const data = await supabaseQuery('GET',
-      `/user_movie_interactions?${filter}&select=*,movies(tmdb_id,title,overview,poster_path)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
+      `/user_movie_interactions?${filter}&select=*,movies(tmdb_id,title,overview,poster_path,release_date)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
 
     const items = Array.isArray(data) ? data.map((item: any) => ({
       tmdb_id: item.movies?.tmdb_id || item.movie_id,
       title: item.movies?.title || '',
       overview: item.movies?.overview || '',
       poster_path: item.movies?.poster_path || '',
+      vote_average: item.rating || 0,
+      release_date: item.movies?.release_date || '',
       status: item.status,
       rating: item.rating,
       is_favorite: item.is_favorite,
@@ -223,7 +313,12 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
   }
 
   if (req.method === 'POST') {
-    const { movie_id: tmdbId, status, rating, title, overview, poster_path } = req.body;
+    const { movie_id: tmdbId, series_id: seriesTmbId, status, rating, title, overview, poster_path, season_number, episode_number } = req.body;
+
+    if (seriesTmbId) {
+      return handleSeriesInteraction(req, res, userId, seriesTmbId, status, rating, title, poster_path, season_number, episode_number);
+    }
+
     if (!tmdbId) {
       return res.status(400).json({
         success: false,
