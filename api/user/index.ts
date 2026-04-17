@@ -216,26 +216,35 @@ async function handleStats(req: VercelRequest, res: VercelResponse, userId: stri
     });
   }
 
-  const watchedData = await supabaseQuery('GET',
+  const movieWatchedData = await supabaseQuery('GET',
     `/user_movie_interactions?user_id=eq.${userId}&status=eq.watched&select=id,rating`);
-
-  const watchingData = await supabaseQuery('GET',
+  const movieWatchingData = await supabaseQuery('GET',
     `/user_movie_interactions?user_id=eq.${userId}&status=eq.watching&select=id`);
-
-  const wantToWatchData = await supabaseQuery('GET',
+  const movieWantToWatchData = await supabaseQuery('GET',
     `/user_movie_interactions?user_id=eq.${userId}&status=eq.want_to_watch&select=id`);
 
-  const watched = Array.isArray(watchedData) ? watchedData : [];
-  const watching = Array.isArray(watchingData) ? watchingData : [];
-  const wantToWatch = Array.isArray(wantToWatchData) ? wantToWatchData : [];
+  const seriesWatchedData = await supabaseQuery('GET',
+    `/user_tv_interactions?user_id=eq.${userId}&status=eq.watched&select=id,rating`);
+  const seriesWatchingData = await supabaseQuery('GET',
+    `/user_tv_interactions?user_id=eq.${userId}&status=eq.watching&select=id`);
+  const seriesWantToWatchData = await supabaseQuery('GET',
+    `/user_tv_interactions?user_id=eq.${userId}&status=eq.want_to_watch&select=id`);
 
-  const watchedCount = watched.length;
-  const watchingCount = watching.length;
-  const wantToWatchCount = wantToWatch.length;
+  const movieWatched = Array.isArray(movieWatchedData) ? movieWatchedData : [];
+  const movieWatching = Array.isArray(movieWatchingData) ? movieWatchingData : [];
+  const movieWantToWatch = Array.isArray(movieWantToWatchData) ? movieWantToWatchData : [];
+  const seriesWatched = Array.isArray(seriesWatchedData) ? seriesWatchedData : [];
+  const seriesWatching = Array.isArray(seriesWatchingData) ? seriesWatchingData : [];
+  const seriesWantToWatch = Array.isArray(seriesWantToWatchData) ? seriesWantToWatchData : [];
 
+  const watchedCount = movieWatched.length + seriesWatched.length;
+  const watchingCount = movieWatching.length + seriesWatching.length;
+  const wantToWatchCount = movieWantToWatch.length + seriesWantToWatch.length;
+
+  const allRated = [...movieWatched, ...seriesWatched];
   let totalRating = 0;
   let ratedCount = 0;
-  for (const item of watched) {
+  for (const item of allRated) {
     if (item.rating !== null && item.rating !== undefined) {
       totalRating += item.rating;
       ratedCount++;
@@ -251,7 +260,7 @@ async function handleStats(req: VercelRequest, res: VercelResponse, userId: stri
       watching_count: watchingCount,
       want_to_watch_count: wantToWatchCount,
       average_rating: Math.round(averageRating * 10) / 10,
-      total_movies: watchedCount + watchingCount + wantToWatchCount
+      total_movies: watchedCount + watchingCount + wantToWatchCount,
     }
   });
 }
@@ -261,7 +270,8 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
 
   if (req.method === 'GET') {
-    const { status, limit, offset, movie_id } = req.query;
+    const { status, limit, offset, movie_id, type } = req.query;
+    const contentType = (type as string) || 'movies';
 
     if (movie_id) {
       const movieData = await supabaseQuery('GET', `/movies?tmdb_id=eq.${movie_id}&select=id`);
@@ -284,30 +294,63 @@ async function handleInteractions(req: VercelRequest, res: VercelResponse, userI
     const limitNum = Math.min(parseInt(limit as string) || 20, 50);
     const offsetNum = parseInt(offset as string) || 0;
 
-    let filter = `user_id=eq.${userId}`;
-    if (status && status !== 'all') {
-      filter += `&status=eq.${status}`;
+    let allItems: any[] = [];
+
+    if (contentType === 'all' || contentType === 'movies') {
+      let movieFilter = `user_id=eq.${userId}`;
+      if (status && status !== 'all') {
+        movieFilter += `&status=eq.${status}`;
+      }
+
+      const movieData = await supabaseQuery('GET',
+        `/user_movie_interactions?${movieFilter}&select=*,movies(tmdb_id,title,overview,poster_path,release_date)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
+
+      const movieItems = Array.isArray(movieData) ? movieData.map((item: any) => ({
+        type: 'movie',
+        tmdb_id: item.movies?.tmdb_id || item.movie_id,
+        title: item.movies?.title || '',
+        overview: item.movies?.overview || '',
+        poster_path: item.movies?.poster_path || '',
+        vote_average: item.rating || 0,
+        release_date: item.movies?.release_date || '',
+        status: item.status,
+        rating: item.rating,
+        is_favorite: item.is_favorite,
+        updated_at: item.updated_at
+      })) : [];
+      allItems = [...allItems, ...movieItems];
     }
 
-    const data = await supabaseQuery('GET',
-      `/user_movie_interactions?${filter}&select=*,movies(tmdb_id,title,overview,poster_path,release_date)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
+    if (contentType === 'all' || contentType === 'series') {
+      let seriesFilter = `user_id=eq.${userId}`;
+      if (status && status !== 'all') {
+        seriesFilter += `&status=eq.${status}`;
+      }
 
-    const items = Array.isArray(data) ? data.map((item: any) => ({
-      tmdb_id: item.movies?.tmdb_id || item.movie_id,
-      title: item.movies?.title || '',
-      overview: item.movies?.overview || '',
-      poster_path: item.movies?.poster_path || '',
-      vote_average: item.rating || 0,
-      release_date: item.movies?.release_date || '',
-      status: item.status,
-      rating: item.rating,
-      is_favorite: item.is_favorite,
-      updated_at: item.updated_at
-    })) : [];
+      const seriesData = await supabaseQuery('GET',
+        `/user_tv_interactions?${seriesFilter}&select=*,tv_series(tmdb_id,name,overview,poster_path)&order(updated_at,desc)&limit=${limitNum}&offset=${offsetNum}`);
+
+      const seriesItems = Array.isArray(seriesData) ? seriesData.map((item: any) => ({
+        type: 'series',
+        tmdb_id: item.tv_series?.tmdb_id || item.series_id,
+        title: item.tv_series?.name || '',
+        overview: item.tv_series?.overview || '',
+        poster_path: item.tv_series?.poster_path || '',
+        vote_average: item.rating || 0,
+        status: item.status,
+        rating: item.rating,
+        current_season: item.current_season,
+        current_episode: item.current_episode,
+        updated_at: item.updated_at
+      })) : [];
+      allItems = [...allItems, ...seriesItems];
+    }
+
+    allItems.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
     return res.status(200).json({
       success: true,
-      data: items,
+      data: allItems,
       meta: { limit: limitNum, offset: offsetNum }
     });
   }
