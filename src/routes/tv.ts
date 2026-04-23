@@ -1,9 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as tmdbService from '../services/tmdb.js';
-import { setAuthUser } from '../middleware/auth.js';
 
 const router = Router();
-router.use(setAuthUser(prisma));
 
 interface TMDBPaginatedResponse {
   page: number;
@@ -117,7 +115,6 @@ router.get('/', async (req: Request, res: Response) => {
           episode_run_time_avg: show.episode_run_time?.length 
             ? show.episode_run_time.reduce((a, b) => a + b, 0) / show.episode_run_time.length 
             : 0,
-          languages: show.languages || [],
         }
       });
     }

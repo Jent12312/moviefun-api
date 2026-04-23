@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { setAuthUser, requireAuth } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
-router.use(setAuthUser(prisma));
 
 router.get('/', async (req: Request, res: Response) => {
   const { content_id, page = 1, per_page = 20 } = req.query;
@@ -51,7 +50,7 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
 
   const result = await req.prisma.userReview.create({
     data: {
-      userId: req.userId,
+      userId: req.userId!,
       movieId: movie.id,
       tmdbId: parseInt(movie_id),
       title: title || '',

@@ -5,39 +5,9 @@ import { ACHIEVEMENTS } from '../types/index.js';
 const router = Router();
 router.use(requireAuth);
 
-async function getOrCreateMovie(prisma: any, tmdbId: number, data?: { title?: string; overview?: string; posterPath?: string }) {
-  let movie = await prisma.movie.findUnique({ where: { tmdbId } });
-  if (!movie) {
-    movie = await prisma.movie.create({
-      data: {
-        tmdbId,
-        title: data?.title || `Movie ${tmdbId}`,
-        overview: data?.overview || '',
-        posterPath: data?.posterPath,
-      }
-    });
-  }
-  return movie;
-}
-
-async function getOrCreateSeries(prisma: any, tmdbId: number, data?: { name?: string; overview?: string; posterPath?: string }) {
-  let series = await prisma.tvSeries.findUnique({ where: { tmdbId } });
-  if (!series) {
-    series = await prisma.tvSeries.create({
-      data: {
-        tmdbId,
-        name: data?.name || `Series ${tmdbId}`,
-        overview: data?.overview || '',
-        posterPath: data?.posterPath,
-      }
-    });
-  }
-  return series;
-}
-
 router.get('/profile', async (req: Request, res: Response) => {
   const user = await req.prisma.user.findUnique({
-    where: { id: req.userId },
+    where: { id: req.userId! },
     select: { id: true, username: true, displayName: true, avatarUrl: true, createdAt: true }
   });
   res.json({ success: true, data: user });
@@ -46,7 +16,7 @@ router.get('/profile', async (req: Request, res: Response) => {
 router.patch('/profile', async (req: Request, res: Response) => {
   const { displayName, avatarUrl } = req.body;
   await req.prisma.user.update({
-    where: { id: req.userId },
+    where: { id: req.userId! },
     data: { displayName, avatarUrl }
   });
   res.json({ success: true });
@@ -54,25 +24,25 @@ router.patch('/profile', async (req: Request, res: Response) => {
 
 router.get('/stats', async (req: Request, res: Response) => {
   const movieWatched = await req.prisma.userMovieInteraction.count({
-    where: { userId: req.userId, status: 'watched' }
+    where: { userId: req.userId!, status: 'watched' }
   });
   const movieWatching = await req.prisma.userMovieInteraction.count({
-    where: { userId: req.userId, status: 'watching' }
+    where: { userId: req.userId!, status: 'watching' }
   });
   const movieWantToWatch = await req.prisma.userMovieInteraction.count({
-    where: { userId: req.userId, status: 'want_to_watch' }
+    where: { userId: req.userId!, status: 'want_to_watch' }
   });
   const seriesWatched = await req.prisma.userTvInteraction.count({
-    where: { userId: req.userId, status: 'watched' }
+    where: { userId: req.userId!, status: 'watched' }
   });
   const seriesWatching = await req.prisma.userTvInteraction.count({
-    where: { userId: req.userId, status: 'watching' }
+    where: { userId: req.userId!, status: 'watching' }
   });
   const seriesWantToWatch = await req.prisma.userTvInteraction.count({
-    where: { userId: req.userId, status: 'want_to_watch' }
+    where: { userId: req.userId!, status: 'want_to_watch' }
   });
   const rated = await req.prisma.userMovieInteraction.findMany({
-    where: { userId: req.userId, status: 'watched', rating: { not: null } },
+    where: { userId: req.userId!, status: 'watched', rating: { not: null } },
     select: { rating: true }
   });
 
@@ -106,7 +76,7 @@ router.get('/interactions', async (req: Request, res: Response) => {
     if (!movie) return res.json({ success: true, data: [] });
     
     const interaction = await req.prisma.userMovieInteraction.findFirst({
-      where: { userId: req.userId, movieId: movie.id },
+      where: { userId: req.userId!, movieId: movie.id },
       include: { movie: { select: { tmdbId: true, title: true } } }
     });
     
@@ -126,7 +96,7 @@ router.get('/interactions', async (req: Request, res: Response) => {
   let items: any[] = [];
 
   if (contentType === 'all' || contentType === 'movies') {
-    const where: any = { userId: req.userId };
+    const where: any = { userId: req.userId! };
     if (status && status !== 'all') where.status = status;
     
     const movies = await req.prisma.userMovieInteraction.findMany({
@@ -153,7 +123,7 @@ router.get('/interactions', async (req: Request, res: Response) => {
   }
 
   if (contentType === 'all' || contentType === 'series') {
-    const where: any = { userId: req.userId };
+    const where: any = { userId: req.userId! };
     if (status && status !== 'all') where.status = status;
     
     const series = await req.prisma.userTvInteraction.findMany({
@@ -188,10 +158,15 @@ router.post('/interactions', async (req: Request, res: Response) => {
   const { movie_id, series_id, status, rating, title, overview, poster_path, season_number, episode_number } = req.body;
 
   if (series_id) {
-    const series = await getOrCreateSeries(req.prisma, parseInt(series_id), { name: title, posterPath: poster_path });
+    let series = await req.prisma.tvSeries.findUnique({ where: { tmdbId: parseInt(series_id) } });
+    if (!series) {
+      series = await req.prisma.tvSeries.create({
+        data: { tmdbId: parseInt(series_id), name: title || `Series ${series_id}`, overview: overview || '', posterPath: poster_path }
+      });
+    }
     
     const existing = await req.prisma.userTvInteraction.findFirst({
-      where: { userId: req.userId, seriesId: series.id }
+      where: { userId: req.userId!, seriesId: series.id }
     });
 
     if (existing) {
@@ -207,7 +182,7 @@ router.post('/interactions', async (req: Request, res: Response) => {
     } else {
       await req.prisma.userTvInteraction.create({
         data: {
-          userId: req.userId,
+          userId: req.userId!,
           seriesId: series.id,
           status: status || 'none',
           rating: rating,
@@ -223,10 +198,15 @@ router.post('/interactions', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'movie_id is required' } });
   }
 
-  const movie = await getOrCreateMovie(req.prisma, parseInt(movie_id), { title, overview, posterPath: poster_path });
+  let movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(movie_id) } });
+  if (!movie) {
+    movie = await req.prisma.movie.create({
+      data: { tmdbId: parseInt(movie_id), title: title || `Movie ${movie_id}`, overview: overview || '', posterPath: poster_path }
+    });
+  }
   
   const existing = await req.prisma.userMovieInteraction.findFirst({
-    where: { userId: req.userId, movieId: movie.id }
+    where: { userId: req.userId!, movieId: movie.id }
   });
 
   if (existing) {
@@ -237,7 +217,7 @@ router.post('/interactions', async (req: Request, res: Response) => {
   } else {
     await req.prisma.userMovieInteraction.create({
       data: {
-        userId: req.userId,
+        userId: req.userId!,
         movieId: movie.id,
         status: status || 'want_to_watch',
         rating: rating
@@ -260,102 +240,15 @@ router.delete('/interactions', async (req: Request, res: Response) => {
   }
 
   await req.prisma.userMovieInteraction.deleteMany({
-    where: { userId: req.userId, movieId: movie.id }
+    where: { userId: req.userId!, movieId: movie.id }
   });
-
-  res.json({ success: true });
-});
-
-router.get('/lists', async (req: Request, res: Response) => {
-  const lists = await req.prisma.userList.findMany({
-    where: { userId: req.userId },
-    orderBy: { createdAt: 'desc' }
-  });
-  res.json({ success: true, data: lists });
-});
-
-router.post('/lists', async (req: Request, res: Response) => {
-  const { name, description } = req.body;
-  if (!name) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'name is required' } });
-  }
-
-  const result = await req.prisma.userList.create({
-    data: { userId: req.userId, name, description }
-  });
-  res.status(201).json({ success: true, data: result });
-});
-
-router.patch('/lists/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const updateData = req.body;
-  await req.prisma.userList.updateMany({
-    where: { id, userId: req.userId },
-    data: updateData
-  });
-  res.json({ success: true });
-});
-
-router.delete('/lists/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  await req.prisma.userList.deleteMany({ where: { id, userId: req.userId } });
-  res.json({ success: true });
-});
-
-router.get('/lists/:id/items', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const items = await req.prisma.userListItem.findMany({
-    where: { listId: id },
-    include: { movie: { select: { tmdbId: true, title: true, posterPath: true } } }
-  });
-  res.json({ success: true, data: items });
-});
-
-router.post('/lists/:id/items', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { tmdb_id } = req.body;
-  if (!tmdb_id) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'tmdb_id is required' } });
-  }
-
-  const list = await req.prisma.userList.findFirst({ where: { id, userId: req.userId } });
-  if (!list) {
-    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied' } });
-  }
-
-  const movie = await getOrCreateMovie(req.prisma, parseInt(tmdb_id));
-  
-  await req.prisma.userListItem.create({
-    data: { listId: id, movieId: movie.id },
-    catch: {}
-  }).catch(() => {});
-
-  res.status(201).json({ success: true });
-});
-
-router.delete('/lists/:id/items', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { tmdb_id } = req.query;
-  if (!tmdb_id) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'tmdb_id is required' } });
-  }
-
-  const list = await req.prisma.userList.findFirst({ where: { id, userId: req.userId } });
-  if (!list) {
-    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied' } });
-  }
-
-  const movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(tmdb_id as string) } });
-  if (movie) {
-    await req.prisma.userListItem.deleteMany({ where: { listId: id, movieId: movie.id } });
-  }
 
   res.json({ success: true });
 });
 
 router.get('/reviews', async (req: Request, res: Response) => {
   const reviews = await req.prisma.userReview.findMany({
-    where: { userId: req.userId },
+    where: { userId: req.userId! },
     include: { movie: { select: { tmdbId: true, title: true, posterPath: true } } },
     orderBy: { createdAt: 'desc' }
   });
@@ -366,7 +259,7 @@ router.post('/reviews/:id/like', async (req: Request, res: Response) => {
   const { id } = req.params;
   
   const existing = await req.prisma.reviewLike.findFirst({
-    where: { userId: req.userId, reviewId: id }
+    where: { userId: req.userId!, reviewId: id }
   });
 
   if (existing) {
@@ -377,7 +270,7 @@ router.post('/reviews/:id/like', async (req: Request, res: Response) => {
     });
     return res.json({ success: true, liked: false });
   } else {
-    await req.prisma.reviewLike.create({ data: { userId: req.userId, reviewId: id } });
+    await req.prisma.reviewLike.create({ data: { userId: req.userId!, reviewId: id } });
     await req.prisma.userReview.update({
       where: { id },
       data: { likesCount: { increment: 1 } }
@@ -388,7 +281,7 @@ router.post('/reviews/:id/like', async (req: Request, res: Response) => {
 
 router.get('/achievements', async (req: Request, res: Response) => {
   const userAchievements = await req.prisma.userAchievement.findMany({
-    where: { userId: req.userId }
+    where: { userId: req.userId! }
   });
 
   const earnedCodes = new Set(userAchievements.map(a => a.achievementCode));
@@ -415,7 +308,7 @@ router.post('/achievements', async (req: Request, res: Response) => {
   }
 
   const existing = await req.prisma.userAchievement.findFirst({
-    where: { userId: req.userId, achievementCode: achievement_code }
+    where: { userId: req.userId!, achievementCode: achievement_code }
   });
 
   if (existing) {
@@ -423,7 +316,7 @@ router.post('/achievements', async (req: Request, res: Response) => {
   }
 
   await req.prisma.userAchievement.create({
-    data: { userId: req.userId, achievementCode: achievement_code }
+    data: { userId: req.userId!, achievementCode: achievement_code }
   });
 
   res.status(201).json({ success: true });
@@ -434,7 +327,7 @@ router.get('/notifications', async (req: Request, res: Response) => {
   const limitNum = Math.min(parseInt(limit as string), 50);
   const offsetNum = parseInt(offset as string);
 
-  const where: any = { userId: req.userId };
+  const where: any = { userId: req.userId! };
   if (unread_only === 'true') where.isRead = false;
 
   const notifications = await req.prisma.notification.findMany({
@@ -445,7 +338,7 @@ router.get('/notifications', async (req: Request, res: Response) => {
   });
 
   const unreadCount = await req.prisma.notification.count({
-    where: { userId: req.userId, isRead: false }
+    where: { userId: req.userId!, isRead: false }
   });
 
   res.json({
@@ -462,7 +355,7 @@ router.post('/notifications', async (req: Request, res: Response) => {
   }
 
   const result = await req.prisma.notification.create({
-    data: { userId: req.userId, type, title, message, data }
+    data: { userId: req.userId!, type, title, message, data }
   });
   res.status(201).json({ success: true, data: result });
 });
@@ -470,7 +363,7 @@ router.post('/notifications', async (req: Request, res: Response) => {
 router.patch('/notifications/:id/read', async (req: Request, res: Response) => {
   const { id } = req.params;
   await req.prisma.notification.updateMany({
-    where: { id, userId: req.userId },
+    where: { id, userId: req.userId! },
     data: { isRead: true }
   });
   res.json({ success: true });
@@ -478,7 +371,7 @@ router.patch('/notifications/:id/read', async (req: Request, res: Response) => {
 
 router.delete('/notifications/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  await req.prisma.notification.deleteMany({ where: { id, userId: req.userId } });
+  await req.prisma.notification.deleteMany({ where: { id, userId: req.userId! } });
   res.json({ success: true });
 });
 

@@ -6,7 +6,7 @@ router.use(requireAuth);
 
 router.get('/friend-requests', async (req: Request, res: Response) => {
   const requests = await req.prisma.friendRequest.findMany({
-    where: { receiverId: req.userId, status: 'pending' },
+    where: { receiverId: req.userId!, status: 'pending' },
     include: { sender: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }
   });
   res.json({ success: true, data: requests });
@@ -19,14 +19,14 @@ router.post('/friend-requests', async (req: Request, res: Response) => {
   }
 
   const existing = await req.prisma.friendRequest.findFirst({
-    where: { senderId: req.userId, receiverId: user_id }
+    where: { senderId: req.userId!, receiverId: user_id }
   });
   if (existing) {
     return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'Friend request already sent' } });
   }
 
   await req.prisma.friendRequest.create({
-    data: { senderId: req.userId, receiverId: user_id }
+    data: { senderId: req.userId!, receiverId: user_id }
   });
   res.status(201).json({ success: true });
 });
@@ -65,7 +65,7 @@ router.delete('/friend-requests/:id', async (req: Request, res: Response) => {
 
 router.get('/friends', async (req: Request, res: Response) => {
   const friends = await req.prisma.friendship.findMany({
-    where: { userId: req.userId },
+    where: { userId: req.userId! },
     include: { friend: { select: { id: true, username: true, displayName: true, avatarUrl: true } } }
   });
   res.json({
@@ -82,10 +82,10 @@ router.get('/friends', async (req: Request, res: Response) => {
 router.delete('/friends/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   await req.prisma.friendship.deleteMany({
-    where: { userId: req.userId, friendId: id }
+    where: { userId: req.userId!, friendId: id }
   });
   await req.prisma.friendship.deleteMany({
-    where: { userId: id, friendId: req.userId }
+    where: { userId: id, friendId: req.userId! }
   });
   res.json({ success: true });
 });
