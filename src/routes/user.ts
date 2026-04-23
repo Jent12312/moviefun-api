@@ -134,7 +134,7 @@ router.get('/interactions', async (req: Request, res: Response) => {
       skip: offsetNum
     });
     
-    items = items.concat(series.map(item => ({
+    items = items.concat(series.map((item: any) => ({
       type: 'series',
       tmdb_id: item.series.tmdbId,
       title: item.series.name,
@@ -257,22 +257,23 @@ router.get('/reviews', async (req: Request, res: Response) => {
 
 router.post('/reviews/:id/like', async (req: Request, res: Response) => {
   const { id } = req.params;
+  const reviewId = Array.isArray(id) ? id[0] : id;
   
   const existing = await req.prisma.reviewLike.findFirst({
-    where: { userId: req.userId!, reviewId: id }
+    where: { userId: req.userId!, reviewId }
   });
 
   if (existing) {
     await req.prisma.reviewLike.delete({ where: { id: existing.id } });
     await req.prisma.userReview.update({
-      where: { id },
+      where: { id: reviewId },
       data: { likesCount: { decrement: 1 } }
     });
     return res.json({ success: true, liked: false });
   } else {
-    await req.prisma.reviewLike.create({ data: { userId: req.userId!, reviewId: id } });
+    await req.prisma.reviewLike.create({ data: { userId: req.userId!, reviewId } });
     await req.prisma.userReview.update({
-      where: { id },
+      where: { id: reviewId },
       data: { likesCount: { increment: 1 } }
     });
     return res.json({ success: true, liked: true });
@@ -362,8 +363,9 @@ router.post('/notifications', async (req: Request, res: Response) => {
 
 router.patch('/notifications/:id/read', async (req: Request, res: Response) => {
   const { id } = req.params;
+  const notificationId = Array.isArray(id) ? id[0] : id;
   await req.prisma.notification.updateMany({
-    where: { id, userId: req.userId! },
+    where: { id: notificationId, userId: req.userId! },
     data: { isRead: true }
   });
   res.json({ success: true });
@@ -371,7 +373,8 @@ router.patch('/notifications/:id/read', async (req: Request, res: Response) => {
 
 router.delete('/notifications/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  await req.prisma.notification.deleteMany({ where: { id, userId: req.userId! } });
+  const notificationId = Array.isArray(id) ? id[0] : id;
+  await req.prisma.notification.deleteMany({ where: { id: notificationId, userId: req.userId! } });
   res.json({ success: true });
 });
 

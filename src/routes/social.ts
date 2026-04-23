@@ -33,15 +33,16 @@ router.post('/friend-requests', async (req: Request, res: Response) => {
 
 router.post('/friend-requests/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  const requestId = Array.isArray(id) ? id[0] : id;
   const { accept } = req.body;
 
   if (accept) {
     await req.prisma.friendRequest.update({
-      where: { id },
+      where: { id: requestId },
       data: { status: 'accepted' }
     });
 
-    const request = await req.prisma.friendRequest.findUnique({ where: { id } });
+    const request = await req.prisma.friendRequest.findUnique({ where: { id: requestId } });
     if (request) {
       await req.prisma.friendship.createMany({
         data: [
@@ -51,7 +52,7 @@ router.post('/friend-requests/:id', async (req: Request, res: Response) => {
       });
     }
   } else {
-    await req.prisma.friendRequest.delete({ where: { id } });
+    await req.prisma.friendRequest.delete({ where: { id: requestId } });
   }
 
   res.json({ success: true });
@@ -59,7 +60,8 @@ router.post('/friend-requests/:id', async (req: Request, res: Response) => {
 
 router.delete('/friend-requests/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  await req.prisma.friendRequest.delete({ where: { id } });
+  const requestId = Array.isArray(id) ? id[0] : id;
+  await req.prisma.friendRequest.delete({ where: { id: requestId } });
   res.json({ success: true });
 });
 
@@ -70,7 +72,7 @@ router.get('/friends', async (req: Request, res: Response) => {
   });
   res.json({
     success: true,
-    data: friends.map(f => ({
+    data: friends.map((f: { friend: { id: string; username: string | null; displayName: string | null; avatarUrl: string | null } }) => ({
       id: f.friend.id,
       username: f.friend.username,
       display_name: f.friend.displayName,
@@ -81,11 +83,12 @@ router.get('/friends', async (req: Request, res: Response) => {
 
 router.delete('/friends/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  const friendId = Array.isArray(id) ? id[0] : id;
   await req.prisma.friendship.deleteMany({
-    where: { userId: req.userId!, friendId: id }
+    where: { userId: req.userId!, friendId }
   });
   await req.prisma.friendship.deleteMany({
-    where: { userId: id, friendId: req.userId! }
+    where: { userId: friendId, friendId: req.userId! }
   });
   res.json({ success: true });
 });

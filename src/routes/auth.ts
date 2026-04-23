@@ -25,7 +25,7 @@ router.post('/register', async (req: Request, res: Response) => {
   const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
 
   const user = await req.prisma.user.create({
-    data: { email, username, passwordHash }
+    data: { email, username, passwordHash, role: 'user' }
   });
 
   const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
