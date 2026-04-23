@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://moviefun:moviefun@db:5432/moviefun
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - NODE_ENV=production
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=moviefun
+      - POSTGRES_PASSWORD=moviefun
+      - POSTGRES_DB=moviefun
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

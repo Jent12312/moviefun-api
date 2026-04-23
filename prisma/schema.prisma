@@ -1,0 +1,266 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InteractionStatus {
+  watched
+  watching
+  want_to_watch
+  dropped
+}
+
+enum FriendRequestStatus {
+  pending
+  accepted
+  rejected
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String   @unique @db.VarChar(30)
+  passwordHash  String   @map("password_hash")
+  displayName   String?  @map("display_name")
+  avatarUrl     String?  @map("avatar_url")
+  role          String   @default("user")
+  emailConfirmedAt DateTime? @map("email_confirmed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  movieInteractions   UserMovieInteraction[]
+  tvInteractions      UserTvInteraction[]
+  reviews             UserReview[]
+  achievements        UserAchievement[]
+  lists               UserList[]
+  listItems           UserListItem[]
+  notifications       Notification[]
+  friendRequestsSent     FriendRequest[] @relation("FriendRequestSender")
+  friendRequestsReceived FriendRequest[] @relation("FriendRequestReceiver")
+  friendsAsUser       Friendship[] @relation("FriendshipUser")
+  friendsAsFriend     Friendship[] @relation("FriendshipFriend")
+  sessions            UserSession[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("user_sessions")
+}
+
+model Movie {
+  id          String   @id @default(uuid())
+  tmdbId      Int      @unique @map("tmdb_id")
+  title       String
+  overview    String?
+  posterPath  String?  @map("poster_path")
+  backdropPath String? @map("backdrop_path")
+  releaseDate DateTime? @map("release_date")
+  runtime     Int?
+  voteAverage Float?   @map("vote_average")
+  voteCount   Int?     @map("vote_count")
+  genres      Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  interactions UserMovieInteraction[]
+  reviews       UserReview[]
+  listItems     UserListItem[]
+
+  @@index([tmdbId])
+  @@map("movies")
+}
+
+model TvSeries {
+  id           String   @id @default(uuid())
+  tmdbId       Int      @unique @map("tmdb_id")
+  name         String
+  overview     String?
+  posterPath   String?  @map("poster_path")
+  backdropPath String?  @map("backdrop_path")
+  firstAirDate DateTime? @map("first_air_date")
+  lastAirDate  DateTime? @map("last_air_date")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  interactions UserTvInteraction[]
+
+  @@index([tmdbId])
+  @@map("tv_series")
+}
+
+model UserMovieInteraction {
+  id         String            @id @default(uuid())
+  userId     String            @map("user_id")
+  movieId    String            @map("movie_id")
+  status     InteractionStatus?
+  rating     Decimal?          @db.Decimal(3, 1)
+  isFavorite Boolean           @default(false) @map("is_favorite")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@map("user_movie_interactions")
+}
+
+model UserTvInteraction {
+  id               String            @id @default(uuid())
+  userId           String            @map("user_id")
+  seriesId         String            @map("series_id")
+  status           InteractionStatus?
+  rating           Decimal?          @db.Decimal(3, 1)
+  currentSeason    Int?              @map("current_season")
+  currentEpisode   Int?              @map("current_episode")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series TvSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seriesId])
+  @@index([userId])
+  @@index([status])
+  @@map("user_tv_interactions")
+}
+
+model UserReview {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  movieId         String?  @map("movie_id")
+  tmdbId          Int      @map("tmdb_id")
+  title           String?
+  content         String
+  rating          Float?
+  likesCount      Int      @default(0) @map("likes_count")
+  containsSpoilers Boolean @default(false) @map("contains_spoilers")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie  Movie? @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  likes  ReviewLike[]
+
+  @@unique([userId, tmdbId])
+  @@index([userId])
+  @@index([tmdbId])
+  @@map("user_reviews")
+}
+
+model ReviewLike {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  reviewId  String   @map("review_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  review UserReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reviewId])
+  @@map("review_likes")
+}
+
+model UserAchievement {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  achievementCode String   @map("achievement_code") @db.VarChar(50)
+  earnedAt        DateTime @default(now()) @map("earned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementCode])
+  @@index([userId])
+  @@map("user_achievements")
+}
+
+model UserList {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String   @db.VarChar(100)
+  description String?
+  isPublic    Boolean  @default(false) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items UserListItem[]
+
+  @@index([userId])
+  @@map("user_lists")
+}
+
+model UserListItem {
+  id      String   @id @default(uuid())
+  listId  String   @map("list_id")
+  movieId String   @map("movie_id")
+  addedAt DateTime @default(now()) @map("added_at")
+
+  list  UserList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  movie Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, movieId])
+  @@index([listId])
+  @@map("user_list_items")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   @db.VarChar(50)
+  title     String
+  message   String?
+  data      Json?
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model FriendRequest {
+  id         String              @id @default(uuid())
+  senderId   String              @map("sender_id")
+  receiverId String              @map("receiver_id")
+  status     FriendRequestStatus @default(pending)
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  sender   User @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("FriendRequestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("friend_requests")
+}
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  friendId  String   @map("friend_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User @relation("FriendshipUser", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@map("friends")
+}

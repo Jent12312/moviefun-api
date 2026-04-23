@@ -1,6 +1,19 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { PrismaClient } from '@prisma/client';
 
-// ===== TMDB Response Types =====
+declare global {
+  namespace Express {
+    interface Request {
+      prisma: PrismaClient;
+      userId?: string;
+    }
+  }
+}
+
+export interface JWTPayload {
+  sub: string;
+  email: string;
+  exp: number;
+}
 
 export interface TMDBMovie {
   id: number;
@@ -91,67 +104,24 @@ export interface TMDBCredits {
   }>;
 }
 
-export interface TMDBPaginatedResponse<T> {
-  page: number;
-  results: T[];
-  total_pages: number;
-  total_results: number;
+export interface AchievementDefinition {
+  code: string;
+  title: string;
+  description: string;
+  icon: string;
+  category: number;
+  points: number;
 }
 
-// ===== Helper Functions =====
-
-export function getTMDBKey(): string {
-  const key = process.env.TMDB_API_KEY;
-  if (!key) {
-    throw new Error('TMDB API Key is not configured');
-  }
-  return key;
-}
-
-export async function fetchFromTMDB(
-  endpoint: string
-): Promise<unknown> {
-  const tmdbKey = getTMDBKey();
-  const url = `https://api.themoviedb.org/3${endpoint}`;
-  
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${tmdbKey}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`TMDB API error: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-export function setCORSHeaders(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-}
-
-export function handleOPTIONS(req: VercelRequest, res: VercelResponse): boolean {
-  if (req.method === 'OPTIONS') {
-    setCORSHeaders(res);
-    res.status(204).end();
-    return true;
-  }
-  return false;
-}
-
-export function sendError(
-  res: VercelResponse,
-  status: number,
-  code: string,
-  message: string
-): void {
-  setCORSHeaders(res);
-  res.status(status).json({
-    success: false,
-    error: { code, message },
-  });
-}
+export const ACHIEVEMENTS: AchievementDefinition[] = [
+  { code: 'first_step', title: 'Первый шаг', description: 'Посмотреть первый фильм', icon: '🎬', category: 0, points: 10 },
+  { code: 'marathon', title: 'Марафонец', description: 'Посмотреть 10 фильмов за неделю', icon: '🏃', category: 0, points: 50 },
+  { code: 'cinephile', title: 'Киноман', description: 'Посмотреть 100 фильмов', icon: '🎥', category: 0, points: 100 },
+  { code: 'critic', title: 'Критик', description: 'Оценить 50 фильмов', icon: '⭐', category: 0, points: 75 },
+  { code: 'first_friend', title: 'Первый друг', description: 'Добавить друга', icon: '🤝', category: 1, points: 10 },
+  { code: 'influencer', title: 'Влиятелен', description: 'Получить 50 лайков', icon: '💫', category: 1, points: 100 },
+  { code: 'cosmopolitan', title: 'Космополит', description: 'Фильмы из 10 стран', icon: '🌍', category: 2, points: 75 },
+  { code: 'time_traveler', title: 'Путешественник', description: 'Фильмы каждого десятилетия', icon: '⏰', category: 2, points: 100 },
+  { code: 'curator', title: 'Куратор', description: 'Создать подборку 20+', icon: '📚', category: 3, points: 50 },
+  { code: 'archivist', title: 'Архивист', description: 'Заполнить профиль', icon: '📋', category: 3, points: 25 },
+];
