@@ -36,7 +36,6 @@ model User {
   tvInteractions      UserTvInteraction[]
   reviews             UserReview[]
   achievements        UserAchievement[]
-  lists               UserList[]
   notifications       Notification[]
   friendRequestsSent     FriendRequest[] @relation("FriendRequestSender")
   friendRequestsReceived FriendRequest[] @relation("FriendRequestReceiver")
@@ -187,36 +186,6 @@ model UserAchievement {
   @@unique([userId, achievementCode])
   @@index([userId])
   @@map("user_achievements")
-}
-
-model UserList {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  name        String   @db.VarChar(100)
-  description String?
-  isPublic    Boolean  @default(false) @map("is_public")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items UserListItem[]
-
-  @@index([userId])
-  @@map("user_lists")
-}
-
-model UserListItem {
-  id      String   @id @default(uuid())
-  listId  String   @map("list_id")
-  movieId String   @map("movie_id")
-  addedAt DateTime @default(now()) @map("added_at")
-
-  list  UserList @relation(fields: [listId], references: [id], onDelete: Cascade)
-  movie Movie    @relation(fields: [movieId], references: [id], onDelete: Cascade)
-
-  @@unique([listId, movieId])
-  @@index([listId])
-  @@map("user_list_items")
 }
 
 model Notification {
