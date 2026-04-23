@@ -37,7 +37,6 @@ model User {
   reviews             UserReview[]
   achievements        UserAchievement[]
   lists               UserList[]
-  listItems           UserListItem[]
   notifications       Notification[]
   friendRequestsSent     FriendRequest[] @relation("FriendRequestSender")
   friendRequestsReceived FriendRequest[] @relation("FriendRequestReceiver")
@@ -79,7 +78,6 @@ model Movie {
 
   interactions UserMovieInteraction[]
   reviews       UserReview[]
-  listItems     UserListItem[]
 
   @@index([tmdbId])
   @@map("movies")
