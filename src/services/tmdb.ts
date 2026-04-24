@@ -1,6 +1,13 @@
+import NodeCache from 'node-cache';
 import { TMDBMovie, TMDBTVShow, TMDBSeason, TMDBCredits } from '../types/index.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+const cache = new NodeCache({ stdTTL: 1800 }); // 30 minutes
+
+function getCacheKey(endpoint: string, page: number): string {
+  return `${endpoint}_${page}`;
+}
 
 function getTMDBKey(): string {
   const key = process.env.TMDB_API_KEY;
@@ -8,6 +15,37 @@ function getTMDBKey(): string {
     throw new Error('TMDB API Key is not configured');
   }
   return key;
+}
+
+const CACHEABLE_ENDPOINTS = [
+  '/movie/popular',
+  '/movie/top_rated',
+  '/movie/upcoming',
+  '/trending/movie/day',
+  '/tv/popular',
+  '/tv/top_rated',
+  '/trending/tv/week',
+  '/genre/movie/list',
+];
+
+function isCacheable(endpoint: string): boolean {
+  return CACHEABLE_ENDPOINTS.some(e => endpoint.startsWith(e));
+}
+
+async function fetchFromTMDBCached(endpoint: string, page = 1): Promise<unknown> {
+  const cacheKey = getCacheKey(endpoint, page);
+  
+  if (isCacheable(endpoint) && cache.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+  
+  const data = await fetchFromTMDB(endpoint);
+  
+  if (isCacheable(endpoint)) {
+    cache.set(cacheKey, data);
+  }
+  
+  return data;
 }
 
 export async function fetchFromTMDB(endpoint: string): Promise<unknown> {
@@ -29,23 +67,23 @@ export async function fetchFromTMDB(endpoint: string): Promise<unknown> {
 }
 
 export async function getMovie(id: number): Promise<TMDBMovie> {
-  return fetchFromTMDB(`/movie/${id}?language=ru-RU`) as Promise<TMDBMovie>;
+  return fetchFromTMDBCached(`/movie/${id}?language=ru-RU`) as Promise<TMDBMovie>;
 }
 
 export async function getPopularMovies(page = 1) {
-  return fetchFromTMDB(`/movie/popular?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/movie/popular?language=ru-RU&page=${page}`, page);
 }
 
 export async function getTopRatedMovies(page = 1) {
-  return fetchFromTMDB(`/movie/top_rated?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/movie/top_rated?language=ru-RU&page=${page}`, page);
 }
 
 export async function getTrendingMovies(page = 1) {
-  return fetchFromTMDB(`/trending/movie/day?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/trending/movie/day?language=ru-RU&page=${page}`, page);
 }
 
 export async function getUpcomingMovies(page = 1) {
-  return fetchFromTMDB(`/movie/upcoming?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/movie/upcoming?language=ru-RU&page=${page}`, page);
 }
 
 export async function searchMovies(query: string, page = 1) {
@@ -61,19 +99,19 @@ export async function getMovieCredits(id: number): Promise<TMDBCredits> {
 }
 
 export async function getTVShow(id: number): Promise<TMDBTVShow> {
-  return fetchFromTMDB(`/tv/${id}?language=ru-RU`) as Promise<TMDBTVShow>;
+  return fetchFromTMDBCached(`/tv/${id}?language=ru-RU`) as Promise<TMDBTVShow>;
 }
 
 export async function getPopularTV(page = 1) {
-  return fetchFromTMDB(`/tv/popular?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/tv/popular?language=ru-RU&page=${page}`, page);
 }
 
 export async function getTopRatedTV(page = 1) {
-  return fetchFromTMDB(`/tv/top_rated?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/tv/top_rated?language=ru-RU&page=${page}`, page);
 }
 
 export async function getTrendingTV(page = 1) {
-  return fetchFromTMDB(`/trending/tv/week?language=ru-RU&page=${page}`);
+  return fetchFromTMDBCached(`/trending/tv/week?language=ru-RU&page=${page}`, page);
 }
 
 export async function searchTV(query: string, page = 1) {
@@ -110,7 +148,7 @@ export interface TMDBGenre {
 }
 
 export async function getMovieGenres(): Promise<{ genres: TMDBGenre[] }> {
-  return fetchFromTMDB(`/genre/movie/list?language=ru-RU`) as Promise<{ genres: TMDBGenre[] }>;
+  return fetchFromTMDBCached(`/genre/movie/list?language=ru-RU`) as Promise<{ genres: TMDBGenre[] }>;
 }
 
 export interface DiscoverFilters {
