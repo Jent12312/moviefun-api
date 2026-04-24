@@ -1,16 +1,22 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { registerSchema, loginSchema } from '../schemas/validation.js';
+import { authLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-router.post('/register', async (req: Request, res: Response) => {
-  const { email, username, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Email и пароль обязательны' } });
+router.post('/register', authLimiter, async (req: Request, res: Response) => {
+  const parsed = registerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message }
+    });
   }
+
+  const { email, username, password } = parsed.data;
 
   try {
     const existingEmail = await req.prisma.user.findUnique({ where: { email } });
@@ -39,12 +45,16 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/login', async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Email и пароль обязательны' } });
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message }
+    });
   }
+
+  const { email, password } = parsed.data;
 
   try {
     const user = await req.prisma.user.findUnique({ where: { email } });
@@ -54,7 +64,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
-    
+
     if (!isValid) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Неверный email или пароль' } });
     }
@@ -78,7 +88,7 @@ router.get('/verify', async (req: Request, res: Response) => {
   }
 
   const token = authHeader.substring(7);
-  
+
   try {
     const payload = jwt.verify(token, JWT_SECRET) as { sub: string; email: string };
     const user = await req.prisma.user.findUnique({

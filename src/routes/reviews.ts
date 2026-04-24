@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { createReviewSchema } from '../schemas/validation.js';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ router.get('/', async (req: Request, res: Response) => {
   const offset = (pageNum - 1) * perPageNum;
 
   const reviews = await req.prisma.userReview.findMany({
-    where: { 
+    where: {
       tmdbId: parseInt(content_id as string),
       contentType: content_type as string
     },
@@ -38,16 +39,19 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 router.post('/', requireAuth, async (req: Request, res: Response) => {
-  const { content_id, content_type = 'movie', content, rating, contains_spoilers, title } = req.body;
-  
-  if (!content_id || !content) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'content_id and content are required' } });
+  const parsed = createReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message }
+    });
   }
 
-  const parsedTmdbId = parseInt(content_id);
-  const parsedContentType = content_type === 'tv' ? 'tv' : 'movie';
+  const { content_id, content_type, content, rating, contains_spoilers, title } = parsed.data;
 
-  // Check if user already has a review for this content
+  const parsedTmdbId = parseInt(content_id);
+  const parsedContentType = content_type;
+
   const existing = await req.prisma.userReview.findFirst({
     where: { userId: req.userId!, tmdbId: parsedTmdbId, contentType: parsedContentType }
   });

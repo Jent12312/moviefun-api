@@ -142,14 +142,21 @@ router.get('/:id/videos', async (req: Request, res: Response) => {
 
   try {
     const data = await tmdbService.getMovieVideos(parseInt(id)) as TMDBVideosResponse;
-    const videos = data.results.map((v: any) => ({
-      id: v.id,
-      name: v.name,
-      key: v.key,
-      site: v.site,
-      type: v.type,
-      official: v.official
-    }));
+    const videos = data.results.map((v: any) => {
+      let videoUrl = v.key;
+      if (v.site === 'YouTube' && v.type === 'Trailer') {
+        videoUrl = `https://www.youtube.com/embed/${v.key}?autoplay=1`;
+      }
+      return {
+        id: v.id,
+        name: v.name,
+        key: v.key,
+        site: v.site,
+        type: v.type,
+        official: v.official,
+        videoUrl
+      };
+    });
     return res.json({ success: true, data: videos });
   } catch (error: any) {
     return sendError(res, 500, 'INTERNAL_SERVER_ERROR', error.message || 'Unknown error');

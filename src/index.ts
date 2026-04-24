@@ -10,6 +10,7 @@ import authRouter from './routes/auth.js';
 import reviewsRouter from './routes/reviews.js';
 import newsRouter from './routes/news.js';
 import imagesRouter from './routes/images.js';
+import { apiLimiter } from './middleware/rateLimit.js';
 
 dotenv.config();
 
@@ -29,12 +30,12 @@ const authMiddleware = createAuthMiddleware(prisma);
 
 app.use(authMiddleware);
 
-app.use('/api/movies', moviesRouter);
-app.use('/api/tv', tvRouter);
+app.use('/api/movies', apiLimiter, moviesRouter);
+app.use('/api/tv', apiLimiter, tvRouter);
 app.use('/api/user', userRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reviews', reviewsRouter);
-app.use('/api/news', newsRouter);
+app.use('/api/news', apiLimiter, newsRouter);
 app.use('/api/images', imagesRouter);
 
 app.get('/health', (req, res) => {
