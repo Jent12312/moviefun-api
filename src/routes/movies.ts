@@ -133,15 +133,16 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 router.get('/:id/videos', async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const idParam = req.params.id;
+  const id = Array.isArray(idParam) ? idParam[0] : idParam;
 
-  if (!/^\d+$/.test(id)) {
+  if (!id || !/^\d+$/.test(id)) {
     return sendError(res, 400, 'INVALID_ID', 'Valid movie ID is required');
   }
 
   try {
     const data = await tmdbService.getMovieVideos(parseInt(id)) as TMDBVideosResponse;
-    const videos = data.results.map(v => ({
+    const videos = data.results.map((v: any) => ({
       id: v.id,
       name: v.name,
       key: v.key,
