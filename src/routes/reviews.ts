@@ -39,40 +39,37 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 router.post('/', requireAuth, async (req: Request, res: Response) => {
-  const parsed = createReviewSchema.safeParse(req.body);
-  if (!parsed.success) {
+  console.log("Получены данные для рецензии:", req.body);
+
+  const { movie_id, content, rating, contains_spoilers, title, content_type } = req.body;
+
+  if (movie_id === undefined || movie_id === null || !content) {
     return res.status(400).json({
       success: false,
-      error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message }
+      error: { code: 'BAD_REQUEST', message: `Ошибка данных. Получен movie_id: ${movie_id}` }
     });
   }
 
-  const { content_id, content_type, content, rating, contains_spoilers, title } = parsed.data;
+  const type = content_type === 'tv' ? 'tv' : 'movie';
 
-  const parsedTmdbId = parseInt(content_id);
-  const parsedContentType = content_type;
+  try {
+    const result = await req.prisma.userReview.create({
+      data: {
+        userId: req.userId!,
+        tmdbId: parseInt(movie_id),
+        contentType: type,
+        title: title || '',
+        content,
+        rating,
+        containsSpoilers: contains_spoilers || false
+      }
+    });
 
-  const existing = await req.prisma.userReview.findFirst({
-    where: { userId: req.userId!, tmdbId: parsedTmdbId, contentType: parsedContentType }
-  });
-
-  if (existing) {
-    return res.status(409).json({ success: false, error: { code: 'DUPLICATE_REVIEW', message: 'Вы уже оставляли рецензию на этот контент' } });
+    res.status(201).json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("Create Review Error:", error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
-
-  const result = await req.prisma.userReview.create({
-    data: {
-      userId: req.userId!,
-      tmdbId: parsedTmdbId,
-      contentType: parsedContentType,
-      title: title || '',
-      content,
-      rating,
-      containsSpoilers: contains_spoilers || false
-    }
-  });
-
-  res.status(201).json({ success: true, data: result });
 });
 
 export default router;
