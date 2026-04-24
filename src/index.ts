@@ -12,6 +12,7 @@ import reviewsRouter from './routes/reviews.js';
 import newsRouter from './routes/news.js';
 import imagesRouter from './routes/images.js';
 import { apiLimiter } from './middleware/rateLimit.js';
+import { startNewsWorker } from './services/newsWorker.js';
 
 dotenv.config();
 
@@ -54,6 +55,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  startNewsWorker(prisma, 15);
 });
 
 export { prisma };

@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import Parser from 'rss-parser';
 import * as cheerio from 'cheerio';
+import { PrismaClient } from '@prisma/client';
 
 const parser = new Parser();
+const prisma = new PrismaClient();
 
 const RSS_FEEDS = [
   'https://kanobu.ru/rss/news.xml',
@@ -43,76 +45,23 @@ router.get('/', async (req: Request, res: Response) => {
   const pageNum = parseInt(page as string);
 
   try {
-    let allArticles: any[] = [];
-
-    const feedPromises = RSS_FEEDS.map(url => parser.parseURL(url).catch(e => {
-      console.error(`Error loading ${url}:`, e.message);
-      return null;
-    }));
-
-    const feeds = await Promise.all(feedPromises);
-
-    for (const feed of feeds) {
-      if (!feed) continue;
-
-      const items = feed.items.map(item => {
-        let imageUrl = item.enclosure?.url || "";
-        
-        if (!imageUrl && item.content) {
-          const imgMatch = item.content.match(/<img[^>]+src="([^">]+)"/);
-          if (imgMatch) imageUrl = imgMatch[1];
-        }
-
-        let cleanSnippet = (item.contentSnippet || item.content || "")
-          .replace(/<[^>]*>?/gm, '')
-          .replace(/\n/g, ' ')
-          .trim()
-          .substring(0, 120) + "...";
-
-        return {
-          id: item.guid || item.link || Math.random().toString(),
-          title: item.title?.replace(/&quot;/g, '"') || "Без заголовка",
-          link: item.link,
-          pubDate: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
-          snippet: cleanSnippet,
-          imageUrl,
-          sourceName: feed.title || "Новости"
-        };
-      });
-
-      allArticles = allArticles.concat(items);
-    }
-
-    allArticles.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-
-    const uniqueArticles: any[] = [];
-    const SIMILARITY_THRESHOLD = 0.65;
-
-    for (const article of allArticles) {
-      let isDuplicate = false;
-
-      for (const unique of uniqueArticles) {
-        const similarity = getSimilarity(article.title, unique.title);
-        if (similarity > SIMILARITY_THRESHOLD) {
-          isDuplicate = true;
-          break;
-        }
-      }
-
-      if (!isDuplicate) {
-        uniqueArticles.push(article);
-      }
-    }
-
     const limit = 20;
     const startIndex = (pageNum - 1) * limit;
-    const paginatedArticles = uniqueArticles.slice(startIndex, startIndex + limit);
+
+    const [articles, total] = await Promise.all([
+      prisma.news.findMany({
+        orderBy: { pubDate: 'desc' },
+        skip: startIndex,
+        take: limit
+      }),
+      prisma.news.count()
+    ]);
 
     res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
     res.json({
       success: true,
-      data: paginatedArticles,
-      meta: { page: pageNum, total_results: uniqueArticles.length }
+      data: articles,
+      meta: { page: pageNum, total_results: total }
     });
 
   } catch (error: any) {
