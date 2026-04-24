@@ -14,12 +14,6 @@ enum InteractionStatus {
   dropped
 }
 
-enum FriendRequestStatus {
-  pending
-  accepted
-  rejected
-}
-
 model User {
   id            String   @id @default(uuid())
   email         String   @unique
@@ -28,7 +22,6 @@ model User {
   displayName   String?  @map("display_name")
   avatarUrl     String?  @map("avatar_url")
   role          String   @default("user")
-  emailConfirmedAt DateTime? @map("email_confirmed_at")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -36,11 +29,6 @@ model User {
   tvInteractions      UserTvInteraction[]
   reviews             UserReview[]
   achievements        UserAchievement[]
-  notifications       Notification[]
-  friendRequestsSent     FriendRequest[] @relation("FriendRequestSender")
-  friendRequestsReceived FriendRequest[] @relation("FriendRequestReceiver")
-  friendsAsUser       Friendship[] @relation("FriendshipUser")
-  friendsAsFriend     Friendship[] @relation("FriendshipFriend")
   sessions            UserSession[]
 
   @@map("users")
@@ -52,9 +40,7 @@ model UserSession {
   tokenHash String   @map("token_hash")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
-
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@index([userId])
   @@index([tokenHash])
   @@map("user_sessions")
@@ -77,7 +63,6 @@ model Movie {
 
   interactions UserMovieInteraction[]
   reviews       UserReview[]
-
   @@index([tmdbId])
   @@map("movies")
 }
@@ -95,7 +80,6 @@ model TvSeries {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   interactions UserTvInteraction[]
-
   @@index([tmdbId])
   @@map("tv_series")
 }
@@ -186,48 +170,4 @@ model UserAchievement {
   @@unique([userId, achievementCode])
   @@index([userId])
   @@map("user_achievements")
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  type      String   @db.VarChar(50)
-  title     String
-  message   String?
-  data      Json?
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([userId, isRead])
-  @@map("notifications")
-}
-
-model FriendRequest {
-  id         String              @id @default(uuid())
-  senderId   String              @map("sender_id")
-  receiverId String              @map("receiver_id")
-  status     FriendRequestStatus @default(pending)
-  createdAt  DateTime           @default(now()) @map("created_at")
-  updatedAt  DateTime           @updatedAt @map("updated_at")
-
-  sender   User @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver User @relation("FriendRequestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-
-  @@map("friend_requests")
-}
-
-model Friendship {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  friendId  String   @map("friend_id")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  user   User @relation("FriendshipUser", fields: [userId], references: [id], onDelete: Cascade)
-  friend User @relation("FriendshipFriend", fields: [friendId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, friendId])
-  @@map("friends")
 }
