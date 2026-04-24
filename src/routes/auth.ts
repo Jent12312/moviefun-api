@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
@@ -8,57 +8,67 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 router.post('/register', async (req: Request, res: Response) => {
   const { email, username, password } = req.body;
   
-  if (!email || !username || !password) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'email, username and password are required' } });
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Email и пароль обязательны' } });
   }
 
-  const existingEmail = await req.prisma.user.findUnique({ where: { email } });
-  if (existingEmail) {
-    return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'Email already registered' } });
+  try {
+    const existingEmail = await req.prisma.user.findUnique({ where: { email } });
+    if (existingEmail) {
+      return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'Email уже зарегистрирован' } });
+    }
+
+    const finalUsername = username || email.split('@')[0] + Math.floor(Math.random() * 1000);
+
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    const user = await req.prisma.user.create({
+      data: { email, username: finalUsername, passwordHash, role: 'user' }
+    });
+
+    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+
+    res.status(201).json({
+      success: true,
+      data: { user: { id: user.id, email: user.email, username: user.username }, token }
+    });
+  } catch (error: any) {
+    console.error("Register Error:", error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
-
-  const existingUsername = await req.prisma.user.findUnique({ where: { username } });
-  if (existingUsername) {
-    return res.status(409).json({ success: false, error: { code: 'CONFLICT', message: 'Username already taken' } });
-  }
-
-  const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-
-  const user = await req.prisma.user.create({
-    data: { email, username, passwordHash, role: 'user' }
-  });
-
-  const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-
-  res.status(201).json({
-    success: true,
-    data: { user: { id: user.id, email: user.email, username: user.username }, token }
-  });
 });
 
 router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   
   if (!email || !password) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'email and password are required' } });
+    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'Email и пароль обязательны' } });
   }
 
-  const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-  
-  const user = await req.prisma.user.findFirst({
-    where: { email, passwordHash }
-  });
+  try {
+    const user = await req.prisma.user.findUnique({ where: { email } });
 
-  if (!user) {
-    return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+    if (!user) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Неверный email или пароль' } });
+    }
+
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    
+    if (!isValid) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Неверный email или пароль' } });
+    }
+
+    const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+
+    res.json({
+      success: true,
+      data: { user: { id: user.id, email: user.email, username: user.username }, token }
+    });
+  } catch (error: any) {
+    console.error("Login Error:", error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
-
-  const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '30d' });
-
-  res.json({
-    success: true,
-    data: { user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl }, token }
-  });
 });
 
 router.get('/verify', async (req: Request, res: Response) => {
