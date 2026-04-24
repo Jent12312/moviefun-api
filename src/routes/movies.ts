@@ -33,6 +33,11 @@ router.get('/', async (req: Request, res: Response) => {
   const pageNum = parseInt(page as string) || 1;
 
   try {
+    if (action === 'genres') {
+      const data = await tmdbService.getMovieGenres();
+      return res.json({ success: true, data: data.genres });
+    }
+
     if (action === 'popular') {
       const data = await tmdbService.getPopularMovies(pageNum) as TMDBPaginatedResponse;
       return res.json({
@@ -79,6 +84,26 @@ router.get('/', async (req: Request, res: Response) => {
         success: true,
         data: data.results,
         meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results, query }
+      });
+    }
+
+    if (action === 'discover') {
+      const genreId = req.query.with_genres ? parseInt(req.query.with_genres as string) : undefined;
+      const year = req.query.primary_release_year ? parseInt(req.query.primary_release_year as string) : undefined;
+      const minRating = req.query['vote_average.gte'] ? parseFloat(req.query['vote_average.gte'] as string) : undefined;
+      const sortBy = req.query.sort_by as string || 'popularity.desc';
+
+      const filters: tmdbService.DiscoverFilters = {};
+      if (genreId && !isNaN(genreId)) filters.genre_id = genreId;
+      if (year && !isNaN(year)) filters.year = year;
+      if (minRating && !isNaN(minRating)) filters.min_rating = minRating;
+      if (sortBy) filters.sort_by = sortBy;
+
+      const data = await tmdbService.discoverMovies(filters, pageNum) as TMDBPaginatedResponse;
+      return res.json({
+        success: true,
+        data: data.results,
+        meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results, filters }
       });
     }
 

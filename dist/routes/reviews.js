@@ -2,14 +2,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_js_1 = require("../middleware/auth.js");
+const validation_js_1 = require("../schemas/validation.js");
 const router = (0, express_1.Router)();
 router.get('/', async (req, res) => {
-    const { content_id, page = 1, per_page = 20 } = req.query;
+    const { content_id, content_type = 'movie', page = 1, per_page = 20 } = req.query;
     const pageNum = parseInt(page);
     const perPageNum = Math.min(parseInt(per_page), 50);
     const offset = (pageNum - 1) * perPageNum;
     const reviews = await req.prisma.userReview.findMany({
-        where: { tmdbId: parseInt(content_id) },
+        where: {
+            tmdbId: parseInt(content_id),
+            contentType: content_type
+        },
         include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } },
         orderBy: { createdAt: 'desc' },
         take: perPageNum,
@@ -31,21 +35,27 @@ router.get('/', async (req, res) => {
     res.json({ success: true, data: formatted, meta: { page: pageNum, per_page: perPageNum } });
 });
 router.post('/', auth_js_1.requireAuth, async (req, res) => {
-    const { movie_id, content, rating, contains_spoilers, title } = req.body;
-    if (!movie_id || !content) {
-        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'movie_id and content are required' } });
-    }
-    let movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(movie_id) } });
-    if (!movie) {
-        movie = await req.prisma.movie.create({
-            data: { tmdbId: parseInt(movie_id), title: `Movie ${movie_id}` }
+    const parsed = validation_js_1.createReviewSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({
+            success: false,
+            error: { code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message }
         });
+    }
+    const { content_id, content_type, content, rating, contains_spoilers, title } = parsed.data;
+    const parsedTmdbId = parseInt(content_id);
+    const parsedContentType = content_type;
+    const existing = await req.prisma.userReview.findFirst({
+        where: { userId: req.userId, tmdbId: parsedTmdbId, contentType: parsedContentType }
+    });
+    if (existing) {
+        return res.status(409).json({ success: false, error: { code: 'DUPLICATE_REVIEW', message: 'Вы уже оставляли рецензию на этот контент' } });
     }
     const result = await req.prisma.userReview.create({
         data: {
             userId: req.userId,
-            movieId: movie.id,
-            tmdbId: parseInt(movie_id),
+            tmdbId: parsedTmdbId,
+            contentType: parsedContentType,
             title: title || '',
             content,
             rating,

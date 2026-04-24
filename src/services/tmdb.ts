@@ -99,3 +99,42 @@ export async function getMovieVideos(id: number) {
 export async function getTVVideos(id: number) {
   return fetchFromTMDB(`/tv/${id}/videos?language=ru-RU`);
 }
+
+export interface TMDBGenre {
+  id: number;
+  name: string;
+}
+
+export async function getMovieGenres(): Promise<{ genres: TMDBGenre[] }> {
+  return fetchFromTMDB(`/genre/movie/list?language=ru-RU`) as Promise<{ genres: TMDBGenre[] }>;
+}
+
+export interface DiscoverFilters {
+  genre_id?: number;
+  year?: number;
+  min_rating?: number;
+  sort_by?: string;
+}
+
+export async function discoverMovies(filters: DiscoverFilters, page = 1) {
+  const params = new URLSearchParams();
+  params.append('language', 'ru-RU');
+  params.append('page', String(page));
+
+  if (filters.genre_id) {
+    params.append('with_genres', String(filters.genre_id));
+  }
+  if (filters.year) {
+    params.append('primary_release_year', String(filters.year));
+  }
+  if (filters.min_rating) {
+    params.append('vote_average.gte', String(filters.min_rating));
+  }
+  if (filters.sort_by) {
+    params.append('sort_by', filters.sort_by);
+  } else {
+    params.append('sort_by', 'popularity.desc');
+  }
+
+  return fetchFromTMDB(`/discover/movie?${params.toString()}`);
+}

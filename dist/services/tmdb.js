@@ -14,8 +14,13 @@ exports.getPopularTV = getPopularTV;
 exports.getTopRatedTV = getTopRatedTV;
 exports.getTrendingTV = getTrendingTV;
 exports.searchTV = searchTV;
+exports.getTVCredits = getTVCredits;
 exports.getSimilarTV = getSimilarTV;
 exports.getTVSeason = getTVSeason;
+exports.getMovieVideos = getMovieVideos;
+exports.getTVVideos = getTVVideos;
+exports.getMovieGenres = getMovieGenres;
+exports.discoverMovies = discoverMovies;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 function getTMDBKey() {
     const key = process.env.TMDB_API_KEY;
@@ -77,9 +82,42 @@ async function getTrendingTV(page = 1) {
 async function searchTV(query, page = 1) {
     return fetchFromTMDB(`/search/tv?query=${encodeURIComponent(query)}&language=ru-RU&page=${page}`);
 }
+async function getTVCredits(id) {
+    return fetchFromTMDB(`/tv/${id}/credits?language=ru-RU`);
+}
 async function getSimilarTV(id) {
     return fetchFromTMDB(`/tv/${id}/similar?language=ru-RU`);
 }
 async function getTVSeason(id, season) {
     return fetchFromTMDB(`/tv/${id}/season/${season}?language=ru-RU`);
+}
+async function getMovieVideos(id) {
+    return fetchFromTMDB(`/movie/${id}/videos?language=ru-RU`);
+}
+async function getTVVideos(id) {
+    return fetchFromTMDB(`/tv/${id}/videos?language=ru-RU`);
+}
+async function getMovieGenres() {
+    return fetchFromTMDB(`/genre/movie/list?language=ru-RU`);
+}
+async function discoverMovies(filters, page = 1) {
+    const params = new URLSearchParams();
+    params.append('language', 'ru-RU');
+    params.append('page', String(page));
+    if (filters.genre_id) {
+        params.append('with_genres', String(filters.genre_id));
+    }
+    if (filters.year) {
+        params.append('primary_release_year', String(filters.year));
+    }
+    if (filters.min_rating) {
+        params.append('vote_average.gte', String(filters.min_rating));
+    }
+    if (filters.sort_by) {
+        params.append('sort_by', filters.sort_by);
+    }
+    else {
+        params.append('sort_by', 'popularity.desc');
+    }
+    return fetchFromTMDB(`/discover/movie?${params.toString()}`);
 }

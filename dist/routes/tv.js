@@ -70,6 +70,13 @@ router.get('/', async (req, res) => {
             const data = await tmdbService.getSimilarTV(parseInt(id));
             return res.json({ success: true, data: data.results, meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results } });
         }
+        if (action === 'credits' && id) {
+            if (!/^\d+$/.test(id)) {
+                return sendError(res, 400, 'INVALID_ID', 'Valid TV ID is required');
+            }
+            const data = await tmdbService.getTVCredits(parseInt(id));
+            return res.json({ success: true, data });
+        }
         if (action === 'season' && id && season) {
             if (!/^\d+$/.test(id) || !/^\d+$/.test(season)) {
                 return sendError(res, 400, 'INVALID_PARAMS', 'Valid TV ID and season number required');

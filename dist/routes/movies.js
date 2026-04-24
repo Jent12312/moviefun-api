@@ -43,6 +43,10 @@ router.get('/', async (req, res) => {
     const { action, id, page } = req.query;
     const pageNum = parseInt(page) || 1;
     try {
+        if (action === 'genres') {
+            const data = await tmdbService.getMovieGenres();
+            return res.json({ success: true, data: data.genres });
+        }
         if (action === 'popular') {
             const data = await tmdbService.getPopularMovies(pageNum);
             return res.json({
@@ -87,6 +91,27 @@ router.get('/', async (req, res) => {
                 meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results, query }
             });
         }
+        if (action === 'discover') {
+            const genreId = req.query.with_genres ? parseInt(req.query.with_genres) : undefined;
+            const year = req.query.primary_release_year ? parseInt(req.query.primary_release_year) : undefined;
+            const minRating = req.query['vote_average.gte'] ? parseFloat(req.query['vote_average.gte']) : undefined;
+            const sortBy = req.query.sort_by || 'popularity.desc';
+            const filters = {};
+            if (genreId && !isNaN(genreId))
+                filters.genre_id = genreId;
+            if (year && !isNaN(year))
+                filters.year = year;
+            if (minRating && !isNaN(minRating))
+                filters.min_rating = minRating;
+            if (sortBy)
+                filters.sort_by = sortBy;
+            const data = await tmdbService.discoverMovies(filters, pageNum);
+            return res.json({
+                success: true,
+                data: data.results,
+                meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results, filters }
+            });
+        }
         if (action === 'similar' && id) {
             if (!/^\d+$/.test(id)) {
                 return sendError(res, 400, 'INVALID_ID', 'Valid movie ID is required');
@@ -129,6 +154,35 @@ router.get('/', async (req, res) => {
             });
         }
         return sendError(res, 400, 'INVALID_ACTION', 'Valid action or id parameter is required');
+    }
+    catch (error) {
+        return sendError(res, 500, 'INTERNAL_SERVER_ERROR', error.message || 'Unknown error');
+    }
+});
+router.get('/:id/videos', async (req, res) => {
+    const idParam = req.params.id;
+    const id = Array.isArray(idParam) ? idParam[0] : idParam;
+    if (!id || !/^\d+$/.test(id)) {
+        return sendError(res, 400, 'INVALID_ID', 'Valid movie ID is required');
+    }
+    try {
+        const data = await tmdbService.getMovieVideos(parseInt(id));
+        const videos = data.results.map((v) => {
+            let videoUrl = v.key;
+            if (v.site === 'YouTube' && v.type === 'Trailer') {
+                videoUrl = `https://www.youtube.com/embed/${v.key}?autoplay=1`;
+            }
+            return {
+                id: v.id,
+                name: v.name,
+                key: v.key,
+                site: v.site,
+                type: v.type,
+                official: v.official,
+                videoUrl
+            };
+        });
+        return res.json({ success: true, data: videos });
     }
     catch (error) {
         return sendError(res, 500, 'INTERNAL_SERVER_ERROR', error.message || 'Unknown error');

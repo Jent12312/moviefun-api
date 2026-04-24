@@ -223,7 +223,7 @@ router.delete('/interactions', async (req, res) => {
 router.get('/reviews', async (req, res) => {
     const reviews = await req.prisma.userReview.findMany({
         where: { userId: req.userId },
-        include: { movie: { select: { tmdbId: true, title: true, posterPath: true } } },
+        include: { user: { select: { id: true, username: true, displayName: true } } },
         orderBy: { createdAt: 'desc' }
     });
     res.json({ success: true, data: reviews });
@@ -283,52 +283,5 @@ router.post('/achievements', async (req, res) => {
         data: { userId: req.userId, achievementCode: achievement_code }
     });
     res.status(201).json({ success: true });
-});
-router.get('/notifications', async (req, res) => {
-    const { limit = 20, offset = 0, unread_only } = req.query;
-    const limitNum = Math.min(parseInt(limit), 50);
-    const offsetNum = parseInt(offset);
-    const where = { userId: req.userId };
-    if (unread_only === 'true')
-        where.isRead = false;
-    const notifications = await req.prisma.notification.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: limitNum,
-        skip: offsetNum
-    });
-    const unreadCount = await req.prisma.notification.count({
-        where: { userId: req.userId, isRead: false }
-    });
-    res.json({
-        success: true,
-        data: notifications,
-        meta: { limit: limitNum, offset: offsetNum, unread_count: unreadCount }
-    });
-});
-router.post('/notifications', async (req, res) => {
-    const { type, title, message, data } = req.body;
-    if (!type || !title) {
-        return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'type and title are required' } });
-    }
-    const result = await req.prisma.notification.create({
-        data: { userId: req.userId, type, title, message, data }
-    });
-    res.status(201).json({ success: true, data: result });
-});
-router.patch('/notifications/:id/read', async (req, res) => {
-    const { id } = req.params;
-    const notificationId = Array.isArray(id) ? id[0] : id;
-    await req.prisma.notification.updateMany({
-        where: { id: notificationId, userId: req.userId },
-        data: { isRead: true }
-    });
-    res.json({ success: true });
-});
-router.delete('/notifications/:id', async (req, res) => {
-    const { id } = req.params;
-    const notificationId = Array.isArray(id) ? id[0] : id;
-    await req.prisma.notification.deleteMany({ where: { id: notificationId, userId: req.userId } });
-    res.json({ success: true });
 });
 exports.default = router;
