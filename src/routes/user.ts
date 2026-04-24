@@ -249,7 +249,7 @@ router.delete('/interactions', async (req: Request, res: Response) => {
 router.get('/reviews', async (req: Request, res: Response) => {
   const reviews = await req.prisma.userReview.findMany({
     where: { userId: req.userId! },
-    include: { movie: { select: { tmdbId: true, title: true, posterPath: true } } },
+    include: { user: { select: { id: true, username: true, displayName: true } } },
     orderBy: { createdAt: 'desc' }
   });
   res.json({ success: true, data: reviews });
