@@ -39,35 +39,33 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 router.post('/', requireAuth, async (req: Request, res: Response) => {
-  console.log("Получены данные для рецензии:", req.body);
+  const { movie_id, content_id, content, rating, contains_spoilers, title, content_type } = req.body;
+  
+  const finalId = movie_id || content_id;
 
-  const { movie_id, content, rating, contains_spoilers, title, content_type } = req.body;
-
-  if (movie_id === undefined || movie_id === null || !content) {
-    return res.status(400).json({
-      success: false,
-      error: { code: 'BAD_REQUEST', message: `Ошибка данных. Получен movie_id: ${movie_id}` }
+  if (!finalId || !content) {
+    return res.status(400).json({ 
+      success: false, 
+      error: { code: 'BAD_REQUEST', message: 'ID контента и текст рецензии обязательны' } 
     });
   }
-
-  const type = content_type === 'tv' ? 'tv' : 'movie';
 
   try {
     const result = await req.prisma.userReview.create({
       data: {
         userId: req.userId!,
-        tmdbId: parseInt(movie_id),
-        contentType: type,
+        tmdbId: parseInt(finalId),
+        contentType: content_type === 'tv' ? 'tv' : 'movie',
         title: title || '',
         content,
-        rating,
+        rating: rating || 0,
         containsSpoilers: contains_spoilers || false
       }
     });
 
     res.status(201).json({ success: true, data: result });
   } catch (error: any) {
-    console.error("Create Review Error:", error);
+    console.error("Ошибка сохранения рецензии:", error);
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 });
