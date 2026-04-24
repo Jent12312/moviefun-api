@@ -51,6 +51,14 @@ router.get('/', async (req: Request, res: Response) => {
       return res.json({ success: true, data: data.results, meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results } });
     }
 
+    if (action === 'credits' && id) {
+      if (!/^\d+$/.test(id as string)) {
+        return sendError(res, 400, 'INVALID_ID', 'Valid TV ID is required');
+      }
+      const data = await tmdbService.getTVCredits(parseInt(id as string));
+      return res.json({ success: true, data });
+    }
+
     if (action === 'season' && id && season) {
       if (!/^\d+$/.test(id as string) || !/^\d+$/.test(season as string)) {
         return sendError(res, 400, 'INVALID_PARAMS', 'Valid TV ID and season number required');

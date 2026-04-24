@@ -4,13 +4,16 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
-  const { content_id, page = 1, per_page = 20 } = req.query;
+  const { content_id, content_type = 'movie', page = 1, per_page = 20 } = req.query;
   const pageNum = parseInt(page as string);
   const perPageNum = Math.min(parseInt(per_page as string), 50);
   const offset = (pageNum - 1) * perPageNum;
 
   const reviews = await req.prisma.userReview.findMany({
-    where: { tmdbId: parseInt(content_id as string) },
+    where: { 
+      tmdbId: parseInt(content_id as string),
+      contentType: content_type as string
+    },
     include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } },
     orderBy: { createdAt: 'desc' },
     take: perPageNum,
@@ -35,24 +38,20 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 router.post('/', requireAuth, async (req: Request, res: Response) => {
-  const { movie_id, content, rating, contains_spoilers, title } = req.body;
+  const { content_id, content_type = 'movie', content, rating, contains_spoilers, title } = req.body;
   
-  if (!movie_id || !content) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'movie_id and content are required' } });
+  if (!content_id || !content) {
+    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'content_id and content are required' } });
   }
 
-  let movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(movie_id) } });
-  if (!movie) {
-    movie = await req.prisma.movie.create({
-      data: { tmdbId: parseInt(movie_id), title: `Movie ${movie_id}` }
-    });
-  }
+  const parsedTmdbId = parseInt(content_id);
+  const parsedContentType = content_type === 'tv' ? 'tv' : 'movie';
 
   const result = await req.prisma.userReview.create({
     data: {
       userId: req.userId!,
-      movieId: movie.id,
-      tmdbId: parseInt(movie_id),
+      tmdbId: parsedTmdbId,
+      contentType: parsedContentType,
       title: title || '',
       content,
       rating,

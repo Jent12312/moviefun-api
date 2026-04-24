@@ -127,23 +127,23 @@ model UserTvInteraction {
 model UserReview {
   id              String   @id @default(uuid())
   userId          String   @map("user_id")
-  movieId         String?  @map("movie_id")
   tmdbId          Int      @map("tmdb_id")
   title           String?
   content         String
   rating          Float?
   likesCount      Int      @default(0) @map("likes_count")
   containsSpoilers Boolean @default(false) @map("contains_spoilers")
+  contentType     String   @default("movie") @map("content_type")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  movie  Movie? @relation(fields: [movieId], references: [id], onDelete: SetNull)
   likes  ReviewLike[]
 
-  @@unique([userId, tmdbId])
+  @@unique([userId, tmdbId, contentType])
   @@index([userId])
   @@index([tmdbId])
+  @@index([contentType])
   @@map("user_reviews")
 }
 
