@@ -91,3 +91,11 @@ export async function getSimilarTV(id: number) {
 export async function getTVSeason(id: number, season: number): Promise<TMDBSeason> {
   return fetchFromTMDB(`/tv/${id}/season/${season}?language=ru-RU`) as Promise<TMDBSeason>;
 }
+
+export async function getMovieVideos(id: number) {
+  return fetchFromTMDB(`/movie/${id}/videos?language=ru-RU`);
+}
+
+export async function getTVVideos(id: number) {
+  return fetchFromTMDB(`/tv/${id}/videos?language=ru-RU`);
+}

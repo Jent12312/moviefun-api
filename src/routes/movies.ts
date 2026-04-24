@@ -10,6 +10,20 @@ interface TMDBPaginatedResponse {
   total_results: number;
 }
 
+interface TMDBVideosResponse {
+  id: number;
+  results: Array<{
+    id: string;
+    iso_639_1: string;
+    iso_3166_1: string;
+    name: string;
+    key: string;
+    site: string;
+    type: string;
+    official: boolean;
+  }>;
+}
+
 function sendError(res: Response, status: number, code: string, message: string) {
   res.status(status).json({ success: false, error: { code, message } });
 }
@@ -113,6 +127,29 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     return sendError(res, 400, 'INVALID_ACTION', 'Valid action or id parameter is required');
+  } catch (error: any) {
+    return sendError(res, 500, 'INTERNAL_SERVER_ERROR', error.message || 'Unknown error');
+  }
+});
+
+router.get('/:id/videos', async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  if (!/^\d+$/.test(id)) {
+    return sendError(res, 400, 'INVALID_ID', 'Valid movie ID is required');
+  }
+
+  try {
+    const data = await tmdbService.getMovieVideos(parseInt(id)) as TMDBVideosResponse;
+    const videos = data.results.map(v => ({
+      id: v.id,
+      name: v.name,
+      key: v.key,
+      site: v.site,
+      type: v.type,
+      official: v.official
+    }));
+    return res.json({ success: true, data: videos });
   } catch (error: any) {
     return sendError(res, 500, 'INTERNAL_SERVER_ERROR', error.message || 'Unknown error');
   }

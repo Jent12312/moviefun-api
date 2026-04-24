@@ -47,6 +47,15 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
   const parsedTmdbId = parseInt(content_id);
   const parsedContentType = content_type === 'tv' ? 'tv' : 'movie';
 
+  // Check if user already has a review for this content
+  const existing = await req.prisma.userReview.findFirst({
+    where: { userId: req.userId!, tmdbId: parsedTmdbId, contentType: parsedContentType }
+  });
+
+  if (existing) {
+    return res.status(409).json({ success: false, error: { code: 'DUPLICATE_REVIEW', message: 'Вы уже оставляли рецензию на этот контент' } });
+  }
+
   const result = await req.prisma.userReview.create({
     data: {
       userId: req.userId!,
