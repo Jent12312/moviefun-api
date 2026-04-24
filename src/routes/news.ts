@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Parser from 'rss-parser';
+import * as cheerio from 'cheerio';
 
 const parser = new Parser();
 
@@ -132,50 +133,54 @@ router.get('/article', async (req: Request, res: Response) => {
   try {
     const response = await fetch(url as string);
     const html = await response.text();
+    const $ = cheerio.load(html);
 
-    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
-    const articleTitle = titleMatch ? titleMatch[1].replace(/ - .*$/, '').trim() : '';
+    let articleTitle = $('title').text().split('-')[0].split('|')[0].trim();
+    if (!articleTitle) {
+      articleTitle = $('h1').first().text().trim();
+    }
 
     let content = '';
-    const contentPatterns = [
-      /<article[^>]*>([\s\S]*?)<\/article>/,
-      /<div[^>]*class="[^"]*article[\s\S]*?<\/div>/,
-      /<div[^>]*class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<\/div>/,
-      /<main[^>]*>([\s\S]*?)<\/main>/
+
+    const articleSelectors = [
+      'article',
+      '[class*="article-content"]',
+      '[class*="article-body"]',
+      '[id*="article"]',
+      '.post-content',
+      '.entry-content',
+      '.news-content',
+      'main'
     ];
 
-    for (const pattern of contentPatterns) {
-      const match = html.match(pattern);
-      if (match) {
-        content = match[1].replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
+    for (const selector of articleSelectors) {
+      const el = $(selector).first();
+      if (el.length && el.text().length > 100) {
+        content = el.text();
         break;
       }
     }
 
-    if (!content) {
-      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/);
-      if (bodyMatch) {
-        content = bodyMatch[1]
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/g, '')
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
-          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/g, '')
-          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/g, '')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
+    if (!content || content.length < 100) {
+      const paragraphs: string[] = [];
+      $('p').each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length > 50) {
+          paragraphs.push(text);
+        }
+      });
+      content = paragraphs.join('\n\n');
     }
 
     content = content
+      .replace(/\s+/g, ' ')
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
-      .replace(/Читать далее.*$/gm, '')
-      .replace(/Подробнее.*$/gm, '')
+      .replace(/Читать далее.*$/gi, '')
+      .replace(/Подробнее.*$/gi, '')
       .trim();
 
     if (content.length > 5000) {

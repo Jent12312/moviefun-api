@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { createAuthMiddleware } from './middleware/auth.js';
 import moviesRouter from './routes/movies.js';
 import tvRouter from './routes/tv.js';
+import searchRouter from './routes/search.js';
 import userRouter from './routes/user.js';
 import authRouter from './routes/auth.js';
 import reviewsRouter from './routes/reviews.js';
@@ -32,6 +33,7 @@ app.use(authMiddleware);
 
 app.use('/api/movies', apiLimiter, moviesRouter);
 app.use('/api/tv', apiLimiter, tvRouter);
+app.use('/api/search', apiLimiter, searchRouter);
 app.use('/api/user', userRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/reviews', reviewsRouter);

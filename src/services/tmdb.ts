@@ -80,6 +80,10 @@ export async function searchTV(query: string, page = 1) {
   return fetchFromTMDB(`/search/tv?query=${encodeURIComponent(query)}&language=ru-RU&page=${page}`);
 }
 
+export async function searchMulti(query: string, page = 1) {
+  return fetchFromTMDB(`/search/multi?query=${encodeURIComponent(query)}&language=ru-RU&page=${page}`);
+}
+
 export async function getTVCredits(id: number): Promise<TMDBCredits> {
   return fetchFromTMDB(`/tv/${id}/credits?language=ru-RU`) as Promise<TMDBCredits>;
 }
