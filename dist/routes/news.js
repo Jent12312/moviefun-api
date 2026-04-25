@@ -1,11 +1,47 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const rss_parser_1 = __importDefault(require("rss-parser"));
+const cheerio = __importStar(require("cheerio"));
+const client_1 = require("@prisma/client");
 const parser = new rss_parser_1.default();
+const prisma = new client_1.PrismaClient();
 const RSS_FEEDS = [
     'https://kanobu.ru/rss/news.xml',
     'https://www.kinonews.ru/rss/',
@@ -39,63 +75,21 @@ router.get('/', async (req, res) => {
     const { page = 1 } = req.query;
     const pageNum = parseInt(page);
     try {
-        let allArticles = [];
-        const feedPromises = RSS_FEEDS.map(url => parser.parseURL(url).catch(e => {
-            console.error(`Error loading ${url}:`, e.message);
-            return null;
-        }));
-        const feeds = await Promise.all(feedPromises);
-        for (const feed of feeds) {
-            if (!feed)
-                continue;
-            const items = feed.items.map(item => {
-                let imageUrl = item.enclosure?.url || "";
-                if (!imageUrl && item.content) {
-                    const imgMatch = item.content.match(/<img[^>]+src="([^">]+)"/);
-                    if (imgMatch)
-                        imageUrl = imgMatch[1];
-                }
-                let cleanSnippet = (item.contentSnippet || item.content || "")
-                    .replace(/<[^>]*>?/gm, '')
-                    .replace(/\n/g, ' ')
-                    .trim()
-                    .substring(0, 120) + "...";
-                return {
-                    id: item.guid || item.link || Math.random().toString(),
-                    title: item.title?.replace(/&quot;/g, '"') || "Без заголовка",
-                    link: item.link,
-                    pubDate: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
-                    snippet: cleanSnippet,
-                    imageUrl,
-                    sourceName: feed.title || "Новости"
-                };
-            });
-            allArticles = allArticles.concat(items);
-        }
-        allArticles.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-        const uniqueArticles = [];
-        const SIMILARITY_THRESHOLD = 0.65;
-        for (const article of allArticles) {
-            let isDuplicate = false;
-            for (const unique of uniqueArticles) {
-                const similarity = getSimilarity(article.title, unique.title);
-                if (similarity > SIMILARITY_THRESHOLD) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-            if (!isDuplicate) {
-                uniqueArticles.push(article);
-            }
-        }
         const limit = 20;
         const startIndex = (pageNum - 1) * limit;
-        const paginatedArticles = uniqueArticles.slice(startIndex, startIndex + limit);
+        const [articles, total] = await Promise.all([
+            prisma.news.findMany({
+                orderBy: { pubDate: 'desc' },
+                skip: startIndex,
+                take: limit
+            }),
+            prisma.news.count()
+        ]);
         res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
         res.json({
             success: true,
-            data: paginatedArticles,
-            meta: { page: pageNum, total_results: uniqueArticles.length }
+            data: articles,
+            meta: { page: pageNum, total_results: total }
         });
     }
     catch (error) {
@@ -114,45 +108,48 @@ router.get('/article', async (req, res) => {
     try {
         const response = await fetch(url);
         const html = await response.text();
-        const titleMatch = html.match(/<title>([^<]+)<\/title>/);
-        const articleTitle = titleMatch ? titleMatch[1].replace(/ - .*$/, '').trim() : '';
+        const $ = cheerio.load(html);
+        let articleTitle = $('title').text().split('-')[0].split('|')[0].trim();
+        if (!articleTitle) {
+            articleTitle = $('h1').first().text().trim();
+        }
         let content = '';
-        const contentPatterns = [
-            /<article[^>]*>([\s\S]*?)<\/article>/,
-            /<div[^>]*class="[^"]*article[\s\S]*?<\/div>/,
-            /<div[^>]*class="[^"]*content[^"]*"[^>]*>([\s\S]*?)<\/div>/,
-            /<main[^>]*>([\s\S]*?)<\/main>/
+        const articleSelectors = [
+            'article',
+            '[class*="article-content"]',
+            '[class*="article-body"]',
+            '[id*="article"]',
+            '.post-content',
+            '.entry-content',
+            '.news-content',
+            'main'
         ];
-        for (const pattern of contentPatterns) {
-            const match = html.match(pattern);
-            if (match) {
-                content = match[1].replace(/<[^>]+>/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
+        for (const selector of articleSelectors) {
+            const el = $(selector).first();
+            if (el.length && el.text().length > 100) {
+                content = el.text();
                 break;
             }
         }
-        if (!content) {
-            const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/);
-            if (bodyMatch) {
-                content = bodyMatch[1]
-                    .replace(/<script[^>]*>[\s\S]*?<\/script>/g, '')
-                    .replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
-                    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/g, '')
-                    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/g, '')
-                    .replace(/<[^>]+>/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-            }
+        if (!content || content.length < 100) {
+            const paragraphs = [];
+            $('p').each((_, el) => {
+                const text = $(el).text().trim();
+                if (text.length > 50) {
+                    paragraphs.push(text);
+                }
+            });
+            content = paragraphs.join('\n\n');
         }
         content = content
+            .replace(/\s+/g, ' ')
             .replace(/&nbsp;/g, ' ')
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"')
-            .replace(/Читать далее.*$/gm, '')
-            .replace(/Подробнее.*$/gm, '')
+            .replace(/Читать далее.*$/gi, '')
+            .replace(/Подробнее.*$/gi, '')
             .trim();
         if (content.length > 5000) {
             content = content.substring(0, 5000) + '...';

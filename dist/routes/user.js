@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_js_1 = require("../middleware/auth.js");
 const index_js_1 = require("../types/index.js");
+const tmdb_js_1 = require("../services/tmdb.js");
 const router = (0, express_1.Router)();
 router.use(auth_js_1.requireAuth);
 router.get('/profile', async (req, res) => {
@@ -283,5 +284,52 @@ router.post('/achievements', async (req, res) => {
         data: { userId: req.userId, achievementCode: achievement_code }
     });
     res.status(201).json({ success: true });
+});
+router.get('/personal-recommendations', async (req, res) => {
+    const topRated = await req.prisma.userMovieInteraction.findMany({
+        where: { userId: req.userId, rating: { gte: 9 } },
+        include: { movie: { select: { tmdbId: true, title: true } } },
+        orderBy: { updatedAt: 'desc' },
+        take: 3
+    });
+    if (topRated.length === 0) {
+        return res.json({ success: true, data: [], message: 'No rated movies yet' });
+    }
+    const watchedMovies = await req.prisma.userMovieInteraction.findMany({
+        where: { userId: req.userId, status: 'watched' },
+        include: { movie: { select: { tmdbId: true } } }
+    });
+    const watchedIds = new Set(watchedMovies.map((m) => m.movie.tmdbId));
+    const allRecommendations = [];
+    for (const interaction of topRated) {
+        const tmdbId = interaction.movie.tmdbId;
+        try {
+            const data = await (0, tmdb_js_1.getMovieRecommendations)(tmdbId);
+            if (data.results && data.results.length > 0) {
+                allRecommendations.push(...data.results);
+            }
+        }
+        catch (err) {
+            console.error(`Failed to get recommendations for movie ${tmdbId}:`, err);
+        }
+    }
+    const uniqueById = new Map();
+    for (const movie of allRecommendations) {
+        if (!watchedIds.has(movie.id) && !uniqueById.has(movie.id)) {
+            uniqueById.set(movie.id, movie);
+        }
+    }
+    const shuffled = Array.from(uniqueById.values()).sort(() => Math.random() - 0.5);
+    const final = shuffled.slice(0, 20).map((m) => ({
+        tmdb_id: m.id,
+        title: m.title || m.name,
+        overview: m.overview,
+        poster_path: m.poster_path,
+        backdrop_path: m.backdrop_path,
+        vote_average: m.vote_average,
+        release_date: m.release_date || m.first_air_date,
+        media_type: m.media_type || 'movie'
+    }));
+    res.json({ success: true, data: final });
 });
 exports.default = router;

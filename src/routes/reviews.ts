@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { createReviewSchema } from '../schemas/validation.js';
+import { Prisma } from '@prisma/client';
 
 const router = Router();
 
@@ -11,8 +12,8 @@ router.get('/', async (req: Request, res: Response) => {
   const offset = (pageNum - 1) * perPageNum;
 
   const orderBy = sort === 'popular'
-    ? [{ likesCount: 'desc' }, { createdAt: 'desc' }]
-    : [{ createdAt: 'desc' }];
+    ? [{ likesCount: Prisma.SortOrder.desc }, { createdAt: Prisma.SortOrder.desc }]
+    : [{ createdAt: Prisma.SortOrder.desc }];
 
   const reviews = await req.prisma.userReview.findMany({
     where: {
@@ -20,7 +21,7 @@ router.get('/', async (req: Request, res: Response) => {
       contentType: content_type as string
     },
     include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } },
-    orderBy,
+    orderBy: orderBy as any,
     take: perPageNum,
     skip: offset
   });

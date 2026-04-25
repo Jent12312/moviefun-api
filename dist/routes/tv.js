@@ -111,6 +111,16 @@ router.get('/', async (req, res) => {
                 return sendError(res, 400, 'INVALID_ID', 'Valid TV ID is required');
             }
             const show = await tmdbService.getTVShow(parseInt(id));
+            const ratingStats = await req.prisma.userTvInteraction.aggregate({
+                where: {
+                    series: { tmdbId: parseInt(id) },
+                    rating: { not: null }
+                },
+                _avg: { rating: true },
+                _count: { rating: true }
+            });
+            const communityRating = ratingStats._avg.rating ? parseFloat(ratingStats._avg.rating.toFixed(1)) : null;
+            const communityVotes = ratingStats._count.rating || 0;
             res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
             return res.json({
                 success: true,
@@ -129,6 +139,8 @@ router.get('/', async (req, res) => {
                     number_of_episodes: show.number_of_episodes,
                     vote_average: show.vote_average,
                     vote_count: show.vote_count,
+                    community_rating: communityRating,
+                    community_votes: communityVotes,
                     genres: show.genres,
                     original_language: show.original_language,
                     status: show.status,
