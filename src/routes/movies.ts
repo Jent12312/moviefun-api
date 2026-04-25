@@ -128,6 +128,19 @@ router.get('/', async (req: Request, res: Response) => {
         return sendError(res, 400, 'INVALID_ID', 'Valid movie ID is required');
       }
       const movie = await tmdbService.getMovie(parseInt(id as string));
+
+      const ratingStats = await req.prisma.userMovieInteraction.aggregate({
+        where: {
+          movie: { tmdbId: parseInt(id as string) },
+          rating: { not: null }
+        },
+        _avg: { rating: true },
+        _count: { rating: true }
+      });
+
+      const communityRating = ratingStats._avg.rating ? parseFloat(ratingStats._avg.rating.toFixed(1)) : null;
+      const communityVotes = ratingStats._count.rating || 0;
+
       res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       return res.json({
         success: true,
@@ -143,6 +156,8 @@ router.get('/', async (req: Request, res: Response) => {
           runtime: movie.runtime,
           vote_average: movie.vote_average,
           vote_count: movie.vote_count,
+          community_rating: communityRating,
+          community_votes: communityVotes,
           genres: movie.genres,
           original_language: movie.original_language,
           status: movie.status,

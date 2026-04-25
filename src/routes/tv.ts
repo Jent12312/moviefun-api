@@ -94,6 +94,19 @@ router.get('/', async (req: Request, res: Response) => {
         return sendError(res, 400, 'INVALID_ID', 'Valid TV ID is required');
       }
       const show = await tmdbService.getTVShow(parseInt(id as string));
+
+      const ratingStats = await req.prisma.userTvInteraction.aggregate({
+        where: {
+          series: { tmdbId: parseInt(id as string) },
+          rating: { not: null }
+        },
+        _avg: { rating: true },
+        _count: { rating: true }
+      });
+
+      const communityRating = ratingStats._avg.rating ? parseFloat(ratingStats._avg.rating.toFixed(1)) : null;
+      const communityVotes = ratingStats._count.rating || 0;
+
       res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       return res.json({
         success: true,
@@ -112,6 +125,8 @@ router.get('/', async (req: Request, res: Response) => {
           number_of_episodes: show.number_of_episodes,
           vote_average: show.vote_average,
           vote_count: show.vote_count,
+          community_rating: communityRating,
+          community_votes: communityVotes,
           genres: show.genres,
           original_language: show.original_language,
           status: show.status,
@@ -120,8 +135,8 @@ router.get('/', async (req: Request, res: Response) => {
           in_production: show.in_production,
           networks: show.networks?.map((n) => ({ id: n.id, name: n.name })),
           created_by: show.created_by?.map((c) => ({ id: c.id, name: c.name })),
-          episode_run_time_avg: show.episode_run_time?.length 
-            ? show.episode_run_time.reduce((a, b) => a + b, 0) / show.episode_run_time.length 
+          episode_run_time_avg: show.episode_run_time?.length
+            ? show.episode_run_time.reduce((a, b) => a + b, 0) / show.episode_run_time.length
             : 0,
         }
       });

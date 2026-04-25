@@ -5,10 +5,14 @@ import { createReviewSchema } from '../schemas/validation.js';
 const router = Router();
 
 router.get('/', async (req: Request, res: Response) => {
-  const { content_id, content_type = 'movie', page = 1, per_page = 20 } = req.query;
+  const { content_id, content_type = 'movie', page = 1, per_page = 20, sort = 'popular' } = req.query;
   const pageNum = parseInt(page as string);
   const perPageNum = Math.min(parseInt(per_page as string), 50);
   const offset = (pageNum - 1) * perPageNum;
+
+  const orderBy = sort === 'popular'
+    ? [{ likesCount: 'desc' }, { createdAt: 'desc' }]
+    : [{ createdAt: 'desc' }];
 
   const reviews = await req.prisma.userReview.findMany({
     where: {
@@ -16,10 +20,18 @@ router.get('/', async (req: Request, res: Response) => {
       contentType: content_type as string
     },
     include: { user: { select: { id: true, username: true, displayName: true, avatarUrl: true } } },
-    orderBy: { createdAt: 'desc' },
+    orderBy,
     take: perPageNum,
     skip: offset
   });
+
+  let likedReviewIds = new Set<string>();
+  if (req.userId) {
+    const userLikes = await req.prisma.reviewLike.findMany({
+      where: { userId: req.userId, reviewId: { in: reviews.map(r => r.id) } }
+    });
+    userLikes.forEach(l => likedReviewIds.add(l.reviewId));
+  }
 
   const formatted = reviews.map(r => ({
     id: r.id,
@@ -32,7 +44,7 @@ router.get('/', async (req: Request, res: Response) => {
     likes_count: r.likesCount,
     contains_spoilers: r.containsSpoilers,
     created_at: r.createdAt,
-    is_liked_by_me: false
+    is_liked_by_me: likedReviewIds.has(r.id)
   }));
 
   res.json({ success: true, data: formatted, meta: { page: pageNum, per_page: perPageNum } });

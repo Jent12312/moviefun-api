@@ -180,3 +180,7 @@ export async function discoverMovies(filters: DiscoverFilters, page = 1) {
 
   return fetchFromTMDB(`/discover/movie?${params.toString()}`);
 }
+
+export async function getMovieRecommendations(id: number) {
+  return fetchFromTMDB(`/movie/${id}/recommendations?language=ru-RU`);
+}
