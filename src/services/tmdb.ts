@@ -151,6 +151,10 @@ export async function getMovieGenres(): Promise<{ genres: TMDBGenre[] }> {
   return fetchFromTMDBCached(`/genre/movie/list?language=ru-RU`) as Promise<{ genres: TMDBGenre[] }>;
 }
 
+export async function getTVGenres(): Promise<{ genres: TMDBGenre[] }> {
+  return fetchFromTMDBCached(`/genre/tv/list?language=ru-RU`) as Promise<{ genres: TMDBGenre[] }>;
+}
+
 export interface DiscoverFilters {
   genre_id?: number;
   year?: number;
@@ -163,22 +167,25 @@ export async function discoverMovies(filters: DiscoverFilters, page = 1) {
   params.append('language', 'ru-RU');
   params.append('page', String(page));
 
-  if (filters.genre_id) {
-    params.append('with_genres', String(filters.genre_id));
-  }
-  if (filters.year) {
-    params.append('primary_release_year', String(filters.year));
-  }
-  if (filters.min_rating) {
-    params.append('vote_average.gte', String(filters.min_rating));
-  }
-  if (filters.sort_by) {
-    params.append('sort_by', filters.sort_by);
-  } else {
-    params.append('sort_by', 'popularity.desc');
-  }
+  if (filters.genre_id) params.append('with_genres', String(filters.genre_id));
+  if (filters.year) params.append('primary_release_year', String(filters.year));
+  if (filters.min_rating) params.append('vote_average.gte', String(filters.min_rating));
+  params.append('sort_by', filters.sort_by || 'popularity.desc');
 
   return fetchFromTMDB(`/discover/movie?${params.toString()}`);
+}
+
+export async function discoverTV(filters: DiscoverFilters, page = 1) {
+  const params = new URLSearchParams();
+  params.append('language', 'ru-RU');
+  params.append('page', String(page));
+
+  if (filters.genre_id) params.append('with_genres', String(filters.genre_id));
+  if (filters.year) params.append('first_air_date_year', String(filters.year));
+  if (filters.min_rating) params.append('vote_average.gte', String(filters.min_rating));
+  params.append('sort_by', filters.sort_by || 'popularity.desc');
+
+  return fetchFromTMDB(`/discover/tv?${params.toString()}`);
 }
 
 export async function getMovieRecommendations(id: number) {

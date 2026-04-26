@@ -42,6 +42,26 @@ router.get('/', async (req: Request, res: Response) => {
       const data = await tmdbService.searchTV(query, pageNum) as TMDBPaginatedResponse;
       return res.json({ success: true, data: data.results, meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results, query } });
     }
+    
+    if (action === 'discover') {
+      const genreId = req.query.with_genres ? parseInt(req.query.with_genres as string) : undefined;
+      const year = req.query.first_air_date_year ? parseInt(req.query.first_air_date_year as string) : undefined;
+      const minRating = req.query['vote_average.gte'] ? parseFloat(req.query['vote_average.gte'] as string) : undefined;
+      const sortBy = req.query.sort_by as string || 'popularity.desc';
+
+      const data = await tmdbService.discoverTV({
+        genre_id: genreId,
+        year: year,
+        min_rating: minRating,
+        sort_by: sortBy
+      }, pageNum) as TMDBPaginatedResponse;
+
+      return res.json({
+        success: true,
+        data: data.results,
+        meta: { page: data.page, total_pages: data.total_pages, total_results: data.total_results }
+      });
+    }
 
     if (action === 'similar' && id) {
       if (!/^\d+$/.test(id as string)) {
