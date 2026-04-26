@@ -60,6 +60,14 @@ export interface TMDBTVShow {
   in_production?: boolean;
   networks?: Array<{ id: number; name: string; logo_path?: string | null }>;
   created_by?: Array<{ id: number; name: string }>;
+  videos?: {
+    results: Array<{
+      id: string;
+      key: string;
+      site: string;
+      type: string;
+    }>;
+  };
 }
 
 export interface TMDBSeason {

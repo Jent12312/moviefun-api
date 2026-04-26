@@ -75,6 +75,7 @@ model TvSeries {
   backdropPath String?  @map("backdrop_path")
   firstAirDate DateTime? @map("first_air_date")
   lastAirDate  DateTime? @map("last_air_date")
+  voteAverage  Float?   @map("vote_average")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
