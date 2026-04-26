@@ -55,6 +55,10 @@ router.get('/stats', async (req: Request, res: Response) => {
   const totalRating = allRated.reduce((sum, r) => sum + (r.rating ? Number(r.rating) : 0), 0);
   const averageRating = allRated.length > 0 ? totalRating / allRated.length : 0;
 
+  const watchedCount = movieWatched + seriesWatched;
+  const watchingCount = movieWatching + seriesWatching;
+  const wantToWatchCount = movieWantToWatch + seriesWantToWatch;
+
   res.json({
     success: true,
     data: {
