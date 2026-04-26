@@ -148,4 +148,35 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/:id/videos', async (req: Request, res: Response) => {
+  const idParam = req.params.id;
+  const id = Array.isArray(idParam) ? idParam[0] : idParam;
+
+  if (!id || !/^\d+$/.test(id)) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_ID', message: 'Valid TV ID is required' } });
+  }
+
+  try {
+    const data: any = await tmdbService.getTVVideos(parseInt(id));
+    const videos = data.results.map((v: any) => {
+      let videoUrl = v.key;
+      if (v.site === 'YouTube' && v.type === 'Trailer') {
+        videoUrl = `https://www.youtube.com/embed/${v.key}?autoplay=1`;
+      }
+      return {
+        id: v.id,
+        name: v.name,
+        key: v.key,
+        site: v.site,
+        type: v.type,
+        official: v.official,
+        videoUrl
+      };
+    });
+    return res.json({ success: true, data: videos });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'Unknown error' } });
+  }
+});
+
 export default router;
