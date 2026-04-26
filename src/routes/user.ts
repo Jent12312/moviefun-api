@@ -67,91 +67,74 @@ router.get('/stats', async (req: Request, res: Response) => {
 });
 
 router.get('/interactions', async (req: Request, res: Response) => {
-  const { status, limit = 20, offset = 0, movie_id, type } = req.query;
-  const limitNum = Math.min(parseInt(limit as string), 50);
-  const offsetNum = parseInt(offset as string);
-  const contentType = (type as string) || 'movies';
+  const { status, limit = 20, offset = 0, movie_id, series_id, movie_ids, type } = req.query;
 
+  // 1. Запрос конкретного фильма
   if (movie_id) {
     const movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(movie_id as string) } });
     if (!movie) return res.json({ success: true, data: [] });
-    
     const interaction = await req.prisma.userMovieInteraction.findFirst({
-      where: { userId: req.userId!, movieId: movie.id },
-      include: { movie: { select: { tmdbId: true, title: true } } }
+      where: { userId: req.userId!, movieId: movie.id }
     });
-    
     if (!interaction) return res.json({ success: true, data: [] });
     return res.json({
       success: true,
-      data: [{
-        tmdb_id: interaction.movie.tmdbId,
-        title: interaction.movie.title,
-        status: interaction.status,
-        rating: interaction.rating ? Number(interaction.rating) : null,
-        is_favorite: interaction.isFavorite
-      }]
+      data: [{ tmdb_id: movie.tmdbId, status: interaction.status, rating: interaction.rating ? Number(interaction.rating) : null }]
     });
   }
 
+  // 2. Запрос конкретного сериала (ЭТОГО НЕ БЫЛО)
+  if (series_id) {
+    const series = await req.prisma.tvSeries.findUnique({ where: { tmdbId: parseInt(series_id as string) } });
+    if (!series) return res.json({ success: true, data: [] });
+    const interaction = await req.prisma.userTvInteraction.findFirst({
+      where: { userId: req.userId!, seriesId: series.id }
+    });
+    if (!interaction) return res.json({ success: true, data: [] });
+    return res.json({
+      success: true,
+      data: [{ tmdb_id: series.tmdbId, status: interaction.status, rating: interaction.rating ? Number(interaction.rating) : null, current_season: interaction.currentSeason, current_episode: interaction.currentEpisode }]
+    });
+  }
+
+  // 3. Запрос пачки фильмов для списков (ЭТОГО НЕ БЫЛО)
+  if (movie_ids) {
+    const ids = (movie_ids as string).split(',').map(id => parseInt(id));
+    const movies = await req.prisma.movie.findMany({ where: { tmdbId: { in: ids } } });
+    const movieDbIds = movies.map(m => m.id);
+    const interactions = await req.prisma.userMovieInteraction.findMany({
+      where: { userId: req.userId!, movieId: { in: movieDbIds } },
+      include: { movie: { select: { tmdbId: true } } }
+    });
+    const data = interactions.map(i => ({ tmdb_id: i.movie.tmdbId, status: i.status, rating: i.rating ? Number(i.rating) : null }));
+    return res.json({ success: true, data });
+  }
+
+  // 4. Обычный запрос списка закладок
+  const limitNum = Math.min(parseInt(limit as string), 50);
+  const offsetNum = parseInt(offset as string);
+  const contentType = (type as string) || 'movies';
   let items: any[] = [];
 
   if (contentType === 'all' || contentType === 'movies') {
     const where: any = { userId: req.userId! };
     if (status && status !== 'all') where.status = status;
-    
     const movies = await req.prisma.userMovieInteraction.findMany({
-      where,
-      include: { movie: { select: { tmdbId: true, title: true, overview: true, posterPath: true, releaseDate: true } } },
-      orderBy: { updatedAt: 'desc' },
-      take: limitNum,
-      skip: offsetNum
+      where, include: { movie: true }, orderBy: { updatedAt: 'desc' }, take: limitNum, skip: offsetNum
     });
-    
-    items = items.concat(movies.map(item => ({
-      type: 'movie',
-      tmdb_id: item.movie.tmdbId,
-      title: item.movie.title,
-      overview: item.movie.overview,
-      poster_path: item.movie.posterPath,
-      vote_average: item.rating ? Number(item.rating) : 0,
-      release_date: item.movie.releaseDate,
-      status: item.status,
-      rating: item.rating ? Number(item.rating) : null,
-      is_favorite: item.isFavorite,
-      updated_at: item.updatedAt
-    })));
+    items = items.concat(movies.map(item => ({ type: 'movie', tmdb_id: item.movie.tmdbId, title: item.movie.title, poster_path: item.movie.posterPath, vote_average: item.rating ? Number(item.rating) : 0, release_date: item.movie.releaseDate, status: item.status, rating: item.rating ? Number(item.rating) : null, is_favorite: item.isFavorite, updated_at: item.updatedAt })));
   }
 
   if (contentType === 'all' || contentType === 'series') {
     const where: any = { userId: req.userId! };
     if (status && status !== 'all') where.status = status;
-    
     const series = await req.prisma.userTvInteraction.findMany({
-      where,
-      include: { series: { select: { tmdbId: true, name: true, overview: true, posterPath: true } } },
-      orderBy: { updatedAt: 'desc' },
-      take: limitNum,
-      skip: offsetNum
+      where, include: { series: true }, orderBy: { updatedAt: 'desc' }, take: limitNum, skip: offsetNum
     });
-    
-    items = items.concat(series.map((item: any) => ({
-      type: 'series',
-      tmdb_id: item.series.tmdbId,
-      title: item.series.name,
-      overview: item.series.overview,
-      poster_path: item.series.posterPath,
-      vote_average: item.rating ? Number(item.rating) : 0,
-      status: item.status,
-      rating: item.rating ? Number(item.rating) : null,
-      current_season: item.currentSeason,
-      current_episode: item.currentEpisode,
-      updated_at: item.updatedAt
-    })));
+    items = items.concat(series.map((item: any) => ({ type: 'series', tmdb_id: item.series.tmdbId, title: item.series.name, poster_path: item.series.posterPath, vote_average: item.rating ? Number(item.rating) : 0, status: item.status, rating: item.rating ? Number(item.rating) : null, current_season: item.currentSeason, current_episode: item.currentEpisode, updated_at: item.updatedAt })));
   }
 
   items.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-
   res.json({ success: true, data: items, meta: { limit: limitNum, offset: offsetNum } });
 });
 
