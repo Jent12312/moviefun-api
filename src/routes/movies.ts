@@ -181,21 +181,23 @@ router.get('/:id/videos', async (req: Request, res: Response) => {
   }
 
   try {
-    const data = await tmdbService.getMovieVideos(parseInt(id)) as TMDBVideosResponse;
-    const videos = data.results.map((v: any) => {
+    // Получаем видео на русском (функции из tmdbService)
+    let data: any = await tmdbService.getMovieVideos(parseInt(id));
+
+    // ИСПРАВЛЕНО: Фолбэк на английский язык, если на русском трейлеров нет
+    if (!data.results || data.results.length === 0) {
+      const fallbackResponse = await fetch(`https://api.themoviedb.org/3/movie/${id}/videos?language=en-US`, {
+        headers: { 'Authorization': `Bearer ${process.env.TMDB_API_KEY}` }
+      });
+      data = await fallbackResponse.json();
+    }
+
+    const videos = (data.results || []).map((v: any) => {
       let videoUrl = v.key;
       if (v.site === 'YouTube' && v.type === 'Trailer') {
         videoUrl = `https://www.youtube.com/embed/${v.key}?autoplay=1`;
       }
-      return {
-        id: v.id,
-        name: v.name,
-        key: v.key,
-        site: v.site,
-        type: v.type,
-        official: v.official,
-        videoUrl
-      };
+      return { id: v.id, name: v.name, key: v.key, site: v.site, type: v.type, official: v.official, videoUrl };
     });
     return res.json({ success: true, data: videos });
   } catch (error: any) {

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { ACHIEVEMENTS } from '../types/index.js';
-import { getMovieRecommendations } from '../services/tmdb.js';
+import { getMovie, getTVShow, getMovieRecommendations } from '../services/tmdb.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -160,8 +160,17 @@ router.post('/interactions', async (req: Request, res: Response) => {
   if (series_id) {
     let series = await req.prisma.tvSeries.findUnique({ where: { tmdbId: parseInt(series_id) } });
     if (!series) {
+      // ИСПРАВЛЕНО: Тянем данные из TMDB, если их нет
+      const tmdbData: any = await getTVShow(parseInt(series_id)).catch(() => ({}));
       series = await req.prisma.tvSeries.create({
-        data: { tmdbId: parseInt(series_id), name: title || `Series ${series_id}`, overview: overview || '', posterPath: poster_path }
+        data: { 
+          tmdbId: parseInt(series_id), 
+          name: title || tmdbData.name || tmdbData.original_name || `Series ${series_id}`, 
+          overview: overview || tmdbData.overview || '', 
+          posterPath: poster_path || tmdbData.poster_path,
+          backdropPath: tmdbData.backdrop_path,
+          voteAverage: tmdbData.vote_average ? Number(tmdbData.vote_average) : 0
+        }
       });
     }
     
@@ -194,38 +203,44 @@ router.post('/interactions', async (req: Request, res: Response) => {
     return res.status(201).json({ success: true });
   }
 
-  if (!movie_id) {
-    return res.status(400).json({ success: false, error: { code: 'BAD_REQUEST', message: 'movie_id is required' } });
-  }
-
-  let movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(movie_id) } });
-  if (!movie) {
-    movie = await req.prisma.movie.create({
-      data: { tmdbId: parseInt(movie_id), title: title || `Movie ${movie_id}`, overview: overview || '', posterPath: poster_path }
+  if (movie_id) {
+    let movie = await req.prisma.movie.findUnique({ where: { tmdbId: parseInt(movie_id) } });
+    if (!movie) {
+      // ИСПРАВЛЕНО: Тянем данные из TMDB
+      const tmdbData: any = await getMovie(parseInt(movie_id)).catch(() => ({}));
+      movie = await req.prisma.movie.create({
+        data: { 
+          tmdbId: parseInt(movie_id), 
+          title: title || tmdbData.title || tmdbData.original_title || `Movie ${movie_id}`, 
+          overview: overview || tmdbData.overview || '', 
+          posterPath: poster_path || tmdbData.poster_path,
+          backdropPath: tmdbData.backdrop_path,
+          voteAverage: tmdbData.vote_average ? Number(tmdbData.vote_average) : 0
+        }
+      });
+    }
+    
+    const existing = await req.prisma.userMovieInteraction.findFirst({
+      where: { userId: req.userId!, movieId: movie.id }
     });
-  }
-  
-  const existing = await req.prisma.userMovieInteraction.findFirst({
-    where: { userId: req.userId!, movieId: movie.id }
-  });
 
-  if (existing) {
-    await req.prisma.userMovieInteraction.update({
-      where: { id: existing.id },
-      data: { status: status || existing.status, rating: rating !== undefined ? rating : existing.rating }
-    });
-  } else {
-    await req.prisma.userMovieInteraction.create({
-      data: {
-        userId: req.userId!,
-        movieId: movie.id,
-        status: status || 'want_to_watch',
-        rating: rating
-      }
-    });
+    if (existing) {
+      await req.prisma.userMovieInteraction.update({
+        where: { id: existing.id },
+        data: { status: status || existing.status, rating: rating !== undefined ? rating : existing.rating }
+      });
+    } else {
+      await req.prisma.userMovieInteraction.create({
+        data: {
+          userId: req.userId!,
+          movieId: movie.id,
+          status: status || 'want_to_watch',
+          rating: rating
+        }
+      });
+    }
+    return res.status(201).json({ success: true });
   }
-
-  res.status(201).json({ success: true });
 });
 
 router.delete('/interactions', async (req: Request, res: Response) => {
@@ -367,8 +382,10 @@ router.get('/personal-recommendations', async (req: Request, res: Response) => {
     tmdb_id: m.id,
     title: m.title || m.name,
     overview: m.overview,
-    poster_path: m.poster_path,
-    backdrop_path: m.backdrop_path,
+    // --- ИСПРАВЛЕНО ДОБАВЛЕНИЕ PROXY URL ---
+    poster_path: m.poster_path ? `https://moviefun.jents.online/api/images/proxy?size=w500&path=${m.poster_path}` : null,
+    backdrop_path: m.backdrop_path ? `https://moviefun.jents.online/api/images/proxy?size=w780&path=${m.backdrop_path}` : null,
+    // ---------------------------------------
     vote_average: m.vote_average,
     release_date: m.release_date || m.first_air_date,
     media_type: m.media_type || 'movie'
